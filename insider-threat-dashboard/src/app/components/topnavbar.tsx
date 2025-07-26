@@ -3,72 +3,73 @@
 import React from 'react';
 import {
   AppBar,
+  Box,
   Toolbar,
   Typography,
-  Box,
   Button,
-  IconButton,
 } from '@mui/material';
-import MenuIcon from '@mui/icons-material/Menu';
+import { useRouter } from 'next/navigation';
+
+const pages = ['Home', 'About', 'Statistics', 'System Admin', 'Employee'];
 
 const TopNavBar = () => {
+  const router = useRouter();
+
+  const handleNavigate = (page: string) => {
+    if (page === 'Home') router.push('/');
+    else if (page === 'System Admin') router.push('/login');
+    
+  };
+
   return (
     <AppBar
       position="sticky"
-      elevation={8}
+      elevation={0}
       sx={{
-        backgroundColor: 'rgba(0, 0, 0, 0.35)',
-        backdropFilter: 'blur(10px)',
+        background: 'rgba(255, 255, 255, 0.1)',
+        backdropFilter: 'blur(15px)',
+        WebkitBackdropFilter: 'blur(15px)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        boxShadow: '0 4px 30px rgba(0, 0, 0, 0.4)',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
       }}
     >
       <Toolbar
         sx={{
           display: 'flex',
           justifyContent: 'space-between',
+          px: { xs: 2, md: 4 },
+          py: 1,
         }}
       >
-        {/* Left Side (Logo/Menu) */}
-        <Box display="flex" alignItems="center">
-          <IconButton edge="start" sx={{ color: '#00e5ff', mr: 1 }}>
-            <MenuIcon />
-          </IconButton>
-          <Typography
-            variant="h6"
-            component="div"
-            sx={{ fontWeight: 'bold', color: '#ffffff' }}
-          >
-            InsiderDash
-          </Typography>
-        </Box>
-
-        {/* Right Side (Nav links) */}
-        <Box display="flex" gap={2}>
-          <Button
-            variant="text"
-            sx={{
-              color: '#ffffff',
-              '&:hover': {
-                color: '#00e5ff',
-              },
-            }}
-            href="/login"
-          >
-            Login
-          </Button>
-          <Button
-            variant="text"
-            sx={{
-              color: '#ffffff',
-              '&:hover': {
-                color: '#00e5ff',
-              },
-            }}
-            href="#"
-          >
-            Docs
-          </Button>
+        <Typography
+          variant="h6"
+          sx={{
+            color: '#fff',
+            fontWeight: 700,
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          InsiderDash
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {pages.map((page) => (
+            <Button
+              key={page}
+              onClick={() => handleNavigate(page)}
+              sx={{
+                color: '#fff',
+                textTransform: 'none',
+                fontWeight: 500,
+                fontSize: '0.9rem',
+                '&:hover': {
+                  color: '#00e5ff',
+                  textShadow: '0 0 5px rgba(0, 229, 255, 0.5)',
+                },
+              }}
+            >
+              {page}
+            </Button>
+          ))}
         </Box>
       </Toolbar>
     </AppBar>

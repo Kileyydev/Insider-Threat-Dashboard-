@@ -1,6 +1,8 @@
-import LoginForm from '@/app/components/loginform';
+import React from 'react';
+import LandingPage from '@/app/landing/page';
 
+const Home = () => {
+  return <LandingPage />;
+};
 
-export default function LoginPage() {
-  return <LoginForm />;
-}
+export default Home;
