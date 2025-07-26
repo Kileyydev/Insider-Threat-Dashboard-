@@ -2,10 +2,12 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
 from .models import OTP
 
-# Login API View
+# Login API View (Email + Password → Sends OTP)
+@csrf_exempt
 def login_view(request):
     if request.method == 'POST':
         email = request.POST.get('email')
@@ -40,6 +42,7 @@ def login_view(request):
 
 
 # OTP Verification API View
+@csrf_exempt
 def verify_otp_view(request):
     if request.method == 'POST':
         otp = request.POST.get('otp')
@@ -65,3 +68,8 @@ def verify_otp_view(request):
             return JsonResponse({'success': False, 'message': 'OTP validation failed'}, status=400)
 
     return JsonResponse({'success': False, 'message': 'Invalid request method'}, status=405)
+
+
+# Home View (Optional)
+def home_view(request):
+    return HttpResponse("Welcome to the Insider Threat Dashboard Backend!")

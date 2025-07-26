@@ -16,9 +16,25 @@ const TopNavBar = () => {
   const router = useRouter();
 
   const handleNavigate = (page: string) => {
-    if (page === 'Home') router.push('/');
-    else if (page === 'System Admin') router.push('/login');
-    
+    switch (page) {
+      case 'Home':
+        router.push('/');
+        break;
+      case 'About':
+        router.push('/#about'); // section in landing page
+        break;
+      case 'Statistics':
+        router.push('/#statistics'); // section in landing page
+        break;
+      case 'System Admin':
+        router.push('/login'); // login page
+        break;
+      case 'Employee':
+        router.push('/employee'); // you can implement this route later
+        break;
+      default:
+        break;
+    }
   };
 
   return (

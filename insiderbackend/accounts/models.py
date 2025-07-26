@@ -7,13 +7,8 @@ def generate_otp():
 
 class OTP(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    code = models.CharField(max_length=6)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        if not self.code:
-            self.code = generate_otp()
-        super().save(*args, **kwargs)
+    code = models.CharField(max_length=6, default=generate_otp)
+    created_at = models.DateTimeField(auto_now_add=True)  # ✅ Fix here
 
     def __str__(self):
-        return f"{self.user.username} - OTP: {self.code}"
+        return f"OTP for {self.user.username}"
