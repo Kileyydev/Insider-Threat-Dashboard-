@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 import { useRouter } from 'next/navigation';
 
-const pages = ['Home', 'About', 'Statistics', 'System Admin', 'Employee'];
+const pages = ['Home', 'About', 'Insigts', 'System Admin', 'Employee'];
 
 const TopNavBar = () => {
   const router = useRouter();
@@ -23,8 +23,8 @@ const TopNavBar = () => {
       case 'About':
         router.push('/#about'); // section in landing page
         break;
-      case 'Statistics':
-        router.push('/#statistics'); // section in landing page
+      case 'Insights':
+        router.push('/#insights'); // section in landing page
         break;
       case 'System Admin':
         router.push('/login'); // login page
