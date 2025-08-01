@@ -69,8 +69,12 @@ WSGI_APPLICATION = 'insiderbackend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'insider_threat_db',
+        'USER': 'admin',
+        'PASSWORD': 'ivy&kris25',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
 
