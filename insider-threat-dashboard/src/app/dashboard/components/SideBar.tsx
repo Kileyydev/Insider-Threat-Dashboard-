@@ -1,7 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Box, List, ListItemButton, ListItemText, Typography } from '@mui/material';
+import {
+  Box,
+  List,
+  ListItemButton,
+  ListItemText,
+  Typography,
+} from '@mui/material';
 import { useRouter } from 'next/navigation';
 
 const Sidebar = () => {
@@ -19,15 +25,20 @@ const Sidebar = () => {
       sx={{
         width: 250,
         height: '100vh',
+        position: 'fixed',
+        top: 0,
+        left: 0,
         backgroundColor: 'rgba(255,255,255,0.05)',
         backdropFilter: 'blur(12px)',
         px: 2,
         py: 4,
         color: '#fff',
         borderRight: '1px solid rgba(255,255,255,0.1)',
+        overflowY: 'auto',
+        zIndex: 1000,
       }}
     >
-      <Typography variant="h6" fontWeight="bold" gutterBottom>
+      <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ px: 1 }}>
         InsiderDash
       </Typography>
 

@@ -8,7 +8,7 @@ const HeroSection = () => {
     <Box
       sx={{
         position: 'relative',
-        height: '100vh',
+        height: '80vh',
         background: '#0f2027',
         overflow: 'hidden',
         zIndex: 0,
@@ -21,10 +21,10 @@ const HeroSection = () => {
           left: 0,
           width: '100%',
           height: '100%',
-          backgroundImage: 'url("/images/insider1.jpg")',
+          backgroundImage: 'url("/images/herosection/insiderthreat1.jpg")',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          opacity: 0.85,
+          opacity: 1,
           zIndex: -1,
         }}
       />
@@ -36,40 +36,27 @@ const HeroSection = () => {
           left: 0,
           right: 0,
           bottom: 0,
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          background: 'rgba(0, 0, 0, 0.5)',
+          background: 'rgba(0, 0, 0, 0.2)', // Darker overlay for contrast
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
+          alignItems: 'flex-start', // Left alignment
+          justifyContent: 'flex-end', // Bottom alignment
           color: '#fff',
-          textAlign: 'center',
+          textAlign: 'left',
           px: 2,
+          pb: 4, // Padding at the bottom for spacing
         }}
       >
-        <Typography variant="h3" sx={{ fontWeight: 700, mb: 2 }}>
-          Insider Threat Monitoring Dashboard
-        </Typography>
-        <Typography variant="h6" sx={{ mb: 4, fontStyle: 'italic', maxWidth: '600px' }}>
-          Enhance your organization’s cybersecurity by detecting, analyzing, and preventing internal threats in real-time.
-        </Typography>
-        <Button
-          variant="contained"
+        <Box
           sx={{
-            backgroundColor: '#00bcd4',
-            color: '#fff',
-            '&:hover': {
-              backgroundColor: '#0097a7',
-            },
-            padding: '10px 24px',
-            borderRadius: '30px',
-            fontWeight: 'bold',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)', // Solid background for text
+            padding: 3,
+            borderRadius: 10,
+            maxWidth: '700px',
           }}
-          href="/login"
         >
-          Get Started
-        </Button>
+          
+        </Box>
       </Box>
     </Box>
   );
