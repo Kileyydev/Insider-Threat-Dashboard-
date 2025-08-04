@@ -36,7 +36,7 @@ const DashboardPage = () => {
           sx={{
             flexGrow: 1,
             p: 3,
-            background: 'linear-gradient(135deg, #0a101f 0%, #1a2a3c 70%, #2e4057 100%)',
+            background: 'rgba(255, 255, 255, 0.1)',
             color: '#fff',
             minHeight: '100vh',
           }}
