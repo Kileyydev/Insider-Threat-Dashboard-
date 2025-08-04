@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint"
   },
-<<<<<<< HEAD
+
   "dependencies": { 
     "@emotion/react": "^11.14.0",
     "@mui/icons-material": "^5.18.0",
@@ -19,13 +19,8 @@
     "@emotion/styled": "^11.14.0",
     "next": "15.4.4",
     "react": "19.1.0",
-=======
-  "dependencies": {
     "chart.js": "^4.5.0",
-    "next": "15.4.4",
-    "react": "19.1.0",
     "react-chartjs-2": "^5.3.0",
->>>>>>> 49d2e2d424e1bcec9ea5246330157cbf2049ea11
     "react-dom": "19.1.0"
   },
   "devDependencies": {
