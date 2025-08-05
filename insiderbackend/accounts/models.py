@@ -1,9 +1,10 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 import random
 
 class EmployeeProfile(models.Model):
-    employee= models.OneToOneField(User, on_delete=models.CASCADE)
+    employee= models.ForeignKey(User, on_delete=models.CASCADE, related_name='profile')
     bio = models.TextField(blank=True, null=True)
     profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
     def __str__(self):
@@ -24,10 +25,26 @@ class EmployeeDetails(models.Model):
 def generate_otp():
     return str(random.randint(100000, 999999))
 
+def generate_otp():
+    return str(random.randint(100000, 999999))
 class OTP(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    employee = models.OneToOneField(User, on_delete=models.CASCADE)    
     code = models.CharField(max_length=6, default=generate_otp)
-    created_at = models.DateTimeField(auto_now_add=True)  # ✅ Fix here
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"OTP for {self.user.username}"
+        return f"OTP for {self.employee.username}"
+
+class ActivityLog(models.Model):
+    action_type = models.CharField(max_length=255)
+    accessed_at = models.DateTimeField(default=timezone.now)
+    resource = models.CharField(max_length=255, blank=True, null=True)
+    activity_id = models.CharField(max_length=255, unique=True)
+    device_info = models.CharField(max_length=255, blank=True, null=True)
+    employee = models.ForeignKey(User, on_delete=models.CASCADE, related_name='activity_logs')
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+
+
+    def __str__(self):
+        return f"{self.employee.username} - {self.action_type} - {self.accessed_at.strftime('%Y-%m-%d %H:%M:%S')}"
