@@ -64,10 +64,7 @@ const Sidebar: React.FC = () => {
         fontWeight: 700,
         color: darkMode ? '#00bcd4' : '#1976d2',
       },
-      body1: {
-        fontSize: '0.9rem',
-        color: darkMode ? '#ffffff' : '#333333',
-      },
+     
     },
     components: {
       MuiListItemButton: {
@@ -85,7 +82,7 @@ const Sidebar: React.FC = () => {
               background: darkMode
                 ? 'rgba(0, 188, 212, 0.3)'
                 : 'rgba(25, 118, 210, 0.2)',
-              color: darkMode ? '#ffffff' : '#1976d2',
+              
               '& .MuiListItemText-primary': {
                 fontWeight: 600,
               },
@@ -118,6 +115,7 @@ const Sidebar: React.FC = () => {
   const menuItems: MenuItem[] = [
     { text: 'Overview', path: '/dashboard', icon: <DashboardIcon /> },
     { text: 'Users', path: '/dashboard/users', icon: <PeopleIcon /> },
+    { text: 'Rule Engine', path: '/dashboard/ruleengine', icon: <PeopleIcon /> },
     { text: 'Threat Logs', path: '/dashboard/logs', icon: <WarningIcon /> },
     { text: 'Settings', path: '/dashboard/settings', icon: <SettingsIcon /> },
   ];
@@ -143,7 +141,6 @@ const Sidebar: React.FC = () => {
         }}
       >
         
-
         <List>
           {menuItems.map((item) => (
             <ListItemButton
