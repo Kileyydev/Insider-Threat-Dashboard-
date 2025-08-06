@@ -1,10 +1,16 @@
 'use client';
 
 import React from 'react';
-import FinanceDirectorDashboard from './components/FinanceDirectorDashboard';
+import FinanceDirectorDashboard from './components/FinanceFilesPage';
+import ITDepartmentSharedFiles from '../../it/dashboard/components/ITFilesPage';
 
 const Page = () => {
-  return <FinanceDirectorDashboard />;
+  return (
+     <>
+    <FinanceDirectorDashboard />
+    <ITDepartmentSharedFiles/>
+</>
+ );
 };
 
 export default Page;
