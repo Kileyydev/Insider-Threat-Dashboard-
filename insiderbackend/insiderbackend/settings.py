@@ -15,7 +15,7 @@ SECRET_KEY = 'django-insecure-w_!ehew3ah2-=5$37gq#_bte3r8=3_+6n-c_p+zxkjer52$y!b
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 
 # Application definition
@@ -169,3 +169,7 @@ CSRF_COOKIE_SAMESITE = "None"
 CSRF_COOKIE_SECURE = True
 
 CORS_ALLOW_CREDENTIALS = True
+
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher'   
+]

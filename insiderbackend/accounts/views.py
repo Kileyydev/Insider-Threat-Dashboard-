@@ -20,7 +20,7 @@ def login_view(request):
             user = User.objects.get(email=email)
             user_auth = authenticate(username=user.username, password=password)
             if user_auth:
-                otp_obj, _ = OTP.objects.get_or_create(user=user)
+                otp_obj, _ = OTP.objects.get_or_create(employee=user)
                 otp_obj.save()
 
                 send_mail(
@@ -56,7 +56,7 @@ def verify_otp_view(request):
 
         try:
             user = User.objects.get(id=user_id)
-            otp_obj = OTP.objects.get(user=user)
+            otp_obj = OTP.objects.get(employee=user)
 
             if otp_obj.code == otp:
                 login(request, user)
