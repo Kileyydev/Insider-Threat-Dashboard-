@@ -2,6 +2,11 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 import random
+from rules_and_detection.rules_and_policies.department_roles import EmployeesRoles, departments
+
+DEPARTMENT_CHOICES = [(key, value) for key, value in departments.items()]
+ROLE_CHOICES = [(role, role.replace('_', ' ').title()) 
+                for dept in EmployeesRoles.values() for role in dept['roles']]
 
 class EmployeeProfile(models.Model):
     employee= models.ForeignKey(User, on_delete=models.CASCADE, related_name='profile')
@@ -11,8 +16,8 @@ class EmployeeProfile(models.Model):
         return self.employee.username
 class EmployeeDetails(models.Model):
     name= models.CharField(max_length=100, blank=True, null=True)
-    department = models.CharField(max_length=100, blank=True, null=True)
-    role = models.CharField(max_length=100, blank=True, null=True)
+    department = models.CharField(max_length=100, choices=DEPARTMENT_CHOICES, default='not_assigned')
+    role = models.CharField(max_length=100, choices=ROLE_CHOICES, default='not_assigned')
     created_at = models.DateTimeField(auto_now_add=True)
     password_hash = models.CharField(max_length=128, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
