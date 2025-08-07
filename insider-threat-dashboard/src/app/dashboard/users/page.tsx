@@ -16,8 +16,17 @@ import {
   MenuItem,
   Tabs,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 
 interface User {
   id: number;
@@ -86,13 +95,23 @@ const StyledTabs = styled(Tabs)(({ theme }) => ({
   },
 }));
 
+const StyledTableCell = styled(TableCell)(({ theme }) => ({
+  fontWeight: 500,
+  color: '#1f2937',
+  borderBottom: `1px solid #e5e7eb`,
+  padding: '12px',
+}));
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'view' | 'edit' | 'delete'>('view');
   const [tabValue, setTabValue] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [newUser, setNewUser] = useState({
     name: '',
@@ -100,6 +119,16 @@ export default function UsersPage() {
     department: '',
     role: '',
     password: '',
+    group: '',
+  });
+
+  const [editUser, setEditUser] = useState({
+    id: 0,
+    first_name: '',
+    last_name: '',
+    email: '',
+    department: '',
+    role: '',
     group: '',
   });
 
@@ -115,6 +144,7 @@ export default function UsersPage() {
       if (!response.ok) throw new Error('Failed to fetch users');
       const data = await response.json();
       setUsers(data);
+      setFilteredUsers(data);
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {
@@ -126,18 +156,48 @@ export default function UsersPage() {
     fetchUsers();
   }, []);
 
-  const handleOpenDetails = (user: User) => {
+  useEffect(() => {
+    const filtered = users.filter(
+      (user) =>
+        `${user.employee.first_name} ${user.employee.last_name}`
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        user.employee.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.role.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setFilteredUsers(filtered);
+  }, [searchQuery, users]);
+
+  const handleOpenDetails = (user: User, mode: 'view' | 'edit' | 'delete') => {
     setSelectedUser(user);
+    setDialogMode(mode);
+    if (mode === 'edit') {
+      setEditUser({
+        id: user.id,
+        first_name: user.employee.first_name,
+        last_name: user.employee.last_name,
+        email: user.employee.email,
+        department: user.department,
+        role: user.role,
+        group: user.group ? user.group.toString() : '',
+      });
+    }
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setSelectedUser(null);
+    setDialogMode('view');
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNewUser({ ...newUser, [e.target.name]: e.target.value });
+  };
+
+  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditUser({ ...editUser, [e.target.name]: e.target.value });
   };
 
   const handleAddUser = async () => {
@@ -158,7 +218,6 @@ export default function UsersPage() {
         role: newUser.role,
         group: newUser.group ? Number(newUser.group) : null,
       };
-      const token = localStorage.getItem("authToken");
       const response = await fetch('http://127.0.0.1:8000/api/employees/', {
         method: 'POST',
         headers: {
@@ -189,8 +248,70 @@ export default function UsersPage() {
     }
   };
 
+  const handleEditUser = async () => {
+    try {
+      const payload = {
+        employee: {
+          username: `${editUser.first_name}${editUser.last_name}`.replace(/\s+/g, '').toLowerCase(),
+          email: editUser.email,
+          first_name: editUser.first_name,
+          last_name: editUser.last_name,
+        },
+        department: editUser.department,
+        role: editUser.role,
+        group: editUser.group ? Number(editUser.group) : null,
+      };
+
+      const response = await fetch(`http://127.0.0.1:8000/api/employees/${editUser.id}/`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Token ${AUTH_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error:', errorData);
+        throw new Error('Failed to update employee');
+      }
+
+      alert('User successfully updated!');
+      handleCloseDialog();
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.message || 'Error updating user');
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/employees/${selectedUser?.id}/`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Token ${AUTH_TOKEN}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete employee');
+      }
+
+      alert('User successfully deleted!');
+      handleCloseDialog();
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.message || 'Error deleting user');
+    }
+  };
+
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
   };
 
   if (loading) {
@@ -304,34 +425,70 @@ export default function UsersPage() {
         {tabValue === 1 && (
           <Box sx={{ p: 4 }}>
             <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, color: '#1f2937' }}>Registered Users</Typography>
-            <Box sx={{ display: 'grid', gap: 3 }}>
-              {users.map((user) => (
-                <StyledPaper key={user.id} sx={{ p: 3, transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 6px 20px rgba(0, 0, 0, 0.15)' } }}>
-                  <Typography variant="h6" sx={{ fontWeight: 600, color: '#1f2937' }}>
-                    {user.employee.first_name} {user.employee.last_name}
-                  </Typography>
-                  <Typography sx={{ color: '#4b5563', mt: 1 }}>Email: {user.employee.email}</Typography>
-                  <Typography sx={{ color: '#4b5563' }}>Department: {user.department}</Typography>
-                  <Typography sx={{ color: '#4b5563' }}>Role: {user.role}</Typography>
-                  <Divider sx={{ my: 2, bgcolor: '#e5e7eb' }} />
-                  <StyledButton
-                    variant="outlined"
-                    onClick={() => handleOpenDetails(user)}
-                    sx={{ borderColor: '#2563eb', color: '#2563eb', '&:hover': { borderColor: '#1d4ed8', color: '#1d4ed8' } }}
-                  >
-                    View Details
-                  </StyledButton>
-                </StyledPaper>
-              ))}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <StyledTextField
+                label="Search Users"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                placeholder="Search by name, email, department, or role"
+                sx={{ width: '300px' }}
+                variant="outlined"
+              />
             </Box>
+            <TableContainer component={StyledPaper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <StyledTableCell>Name</StyledTableCell>
+                    <StyledTableCell>Email</StyledTableCell>
+                    <StyledTableCell>Department</StyledTableCell>
+                    <StyledTableCell>Role</StyledTableCell>
+                    <StyledTableCell>Actions</StyledTableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredUsers.map((user) => (
+                    <TableRow
+                      key={user.id}
+                      sx={{ '&:hover': { backgroundColor: '#f0f9ff' } }}
+                    >
+                      <StyledTableCell>
+                        {user.employee.first_name} {user.employee.last_name}
+                      </StyledTableCell>
+                      <StyledTableCell>{user.employee.email}</StyledTableCell>
+                      <StyledTableCell>{user.department}</StyledTableCell>
+                      <StyledTableCell>{user.role}</StyledTableCell>
+                      <StyledTableCell>
+                        <IconButton
+                          onClick={() => handleOpenDetails(user, 'edit')}
+                          sx={{ color: '#2563eb', mr: 1 }}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton
+                          onClick={() => handleOpenDetails(user, 'delete')}
+                          sx={{ color: '#dc2626' }}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </StyledTableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Box>
         )}
 
-        {/* User Details Dialog */}
+        {/* Dialog for View/Edit/Delete */}
         <Dialog open={openDialog} onClose={handleCloseDialog} PaperProps={{ sx: { borderRadius: '12px', p: 2 } }}>
-          <DialogTitle sx={{ fontWeight: 600, color: '#1f2937' }}>User Details</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 600, color: '#1f2937' }}>
+            {dialogMode === 'view' && 'User Details'}
+            {dialogMode === 'edit' && 'Edit User'}
+            {dialogMode === 'delete' && 'Delete User'}
+          </DialogTitle>
           <DialogContent>
-            {selectedUser && (
+            {selectedUser && dialogMode === 'view' && (
               <Box sx={{ display: 'grid', gap: 2 }}>
                 <Typography sx={{ color: '#1f2937' }}>
                   <strong>Name:</strong> {selectedUser.employee.first_name} {selectedUser.employee.last_name}
@@ -347,9 +504,103 @@ export default function UsersPage() {
                 </Typography>
               </Box>
             )}
+            {dialogMode === 'edit' && (
+              <Box sx={{ display: 'grid', gap: 2 }}>
+                <StyledTextField
+                  fullWidth
+                  label="First Name"
+                  name="first_name"
+                  value={editUser.first_name}
+                  onChange={handleEditInputChange}
+                  variant="outlined"
+                />
+                <StyledTextField
+                  fullWidth
+                  label="Last Name"
+                  name="last_name"
+                  value={editUser.last_name}
+                  onChange={handleEditInputChange}
+                  variant="outlined"
+                />
+                <StyledTextField
+                  fullWidth
+                  label="Email"
+                  name="email"
+                  type="email"
+                  value={editUser.email}
+                  onChange={handleEditInputChange}
+                  variant="outlined"
+                />
+                <StyledTextField
+                  fullWidth
+                  label="Department"
+                  name="department"
+                  select
+                  value={editUser.department}
+                  onChange={handleEditInputChange}
+                  variant="outlined"
+                >
+                  <MenuItem value="finance_department">Finance</MenuItem>
+                  <MenuItem value="operations_department">Operations</MenuItem>
+                  <MenuItem value="it_department">IT</MenuItem>
+                </StyledTextField>
+                <StyledTextField
+                  fullWidth
+                  label="Role"
+                  name="role"
+                  select
+                  value={editUser.role}
+                  onChange={handleEditInputChange}
+                  variant="outlined"
+                >
+                  <MenuItem value="auditor">Auditor</MenuItem>
+                  <MenuItem value="operations_manager">Operations Manager</MenuItem>
+                  <MenuItem value="security_officer">Security Officer</MenuItem>
+                </StyledTextField>
+                <StyledTextField
+                  fullWidth
+                  label="Group ID (optional)"
+                  name="group"
+                  value={editUser.group}
+                  onChange={handleEditInputChange}
+                  variant="outlined"
+                />
+              </Box>
+            )}
+            {dialogMode === 'delete' && (
+              <Typography sx={{ color: '#1f2937' }}>
+                Are you sure you want to delete <strong>{selectedUser?.employee.first_name} {selectedUser?.employee.last_name}</strong>?
+              </Typography>
+            )}
           </DialogContent>
           <DialogActions>
-            <StyledButton onClick={handleCloseDialog} sx={{ color: '#2563eb' }}>Close</StyledButton>
+            {dialogMode === 'view' && (
+              <StyledButton onClick={handleCloseDialog} sx={{ color: '#2563eb' }}>Close</StyledButton>
+            )}
+            {dialogMode === 'edit' && (
+              <>
+                <StyledButton onClick={handleCloseDialog} sx={{ color: '#2563eb' }}>Cancel</StyledButton>
+                <StyledButton
+                  onClick={handleEditUser}
+                  variant="contained"
+                  sx={{ bgcolor: '#2563eb', '&:hover': { bgcolor: '#1d4ed8' } }}
+                >
+                  Save
+                </StyledButton>
+              </>
+            )}
+            {dialogMode === 'delete' && (
+              <>
+                <StyledButton onClick={handleCloseDialog} sx={{ color: '#2563eb' }}>Cancel</StyledButton>
+                <StyledButton
+                  onClick={handleDeleteUser}
+                  variant="contained"
+                  sx={{ bgcolor: '#dc2626', '&:hover': { bgcolor: '#b91c1c' } }}
+                >
+                  Delete
+                </StyledButton>
+              </>
+            )}
           </DialogActions>
         </Dialog>
       </StyledPaper>
