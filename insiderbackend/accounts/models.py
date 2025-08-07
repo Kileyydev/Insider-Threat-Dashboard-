@@ -25,6 +25,12 @@ class EmployeeDetails(models.Model):
     group_id = models.ForeignKey('accounts.Group', on_delete=models.CASCADE, blank=True, null=True, related_name='group_members')
     last_login = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
+    classification_level = models.CharField(max_length=50, choices=[
+        ('public', 'Public'),
+        ('internal', 'Internal'),
+        ('confidential', 'Confidential'),
+        ('secret', 'Secret'),
+    ])
     employee = models.OneToOneField(User, on_delete=models.CASCADE, related_name='details')
    
 

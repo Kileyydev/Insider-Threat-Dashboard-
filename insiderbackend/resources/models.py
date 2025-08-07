@@ -13,6 +13,12 @@ class Resource(models.Model):
     file = models.FileField(upload_to='resources/', blank=True, null=True)
     tags = models.CharField(max_length=255, blank=True, null=True)
     employee_id = models.ForeignKey(User, on_delete=models.CASCADE, related_name='resources', blank=True, null=True)
+    classification_level = models.CharField(max_length=50, choices=[
+        ('public', 'Public'),
+        ('internal', 'Internal'),
+        ('confidential', 'Confidential'),
+        ('secret', 'Secret'),
+    ])
 
     def __str__(self):
         return f"{self.resource_name} - {self.resource_id} - {self.uploaded_by.username}"
