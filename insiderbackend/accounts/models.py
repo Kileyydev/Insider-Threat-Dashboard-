@@ -26,6 +26,8 @@ class EmployeeDetails(models.Model):
     last_login = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
     employee = models.OneToOneField(User, on_delete=models.CASCADE, related_name='details')
+   
+
     def __str__(self):
         return self.name if self.name else self.employee.username
 
