@@ -9,12 +9,12 @@ class AccessPolicy(models.Model):
         ('DAC', 'Discretionary Access Control'),
         ('CUSTOM', 'Custom Policy')
     ]
-    policy_name = models.CharField(max_length=255, unique=True)
+    policy_name = models.CharField(max_length=255, unique=True, default='Default Policy')
     policy_type = models.CharField(max_length=50, choices=POLICY_TYPES, default='RBAC')
     policy_id = models.CharField(max_length=255, unique=True)
     employee_id = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='access_policies')
-    resource_id = models.ForeignKey('resources.Resource', on_delete=models.CASCADE, related_name='access_policies', null=True, blank=True)
-    resource_name = models.ForeignKey('resources.Resource', on_delete=models.CASCADE, related_name='name', null=True, blank=True)
+    resource_id = models.ForeignKey('resources.Resource', on_delete=models.CASCADE, related_name='access_policies_id', null=True, blank=True)
+    resource_name = models.ForeignKey('resources.Resource', on_delete=models.CASCADE, related_name='access_policies_name', null=True, blank=True)
     allowed_actions = models.CharField(max_length=50)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

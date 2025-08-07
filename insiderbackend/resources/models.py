@@ -4,7 +4,7 @@ from django.utils import timezone
 
 class Resource(models.Model):
     resource_id = models.CharField(max_length=255, unique=True)
-    name = models.CharField(max_length=255)
+    resource = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
@@ -15,4 +15,4 @@ class Resource(models.Model):
     employee_id = models.ForeignKey(User, on_delete=models.CASCADE, related_name='resources', blank=True, null=True)
 
     def __str__(self):
-        return f"{self.name} - {self.resource_id} - {self.uploaded_by.username}"
+        return f"{self.resource_name} - {self.resource_id} - {self.uploaded_by.username}"
