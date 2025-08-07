@@ -30,7 +30,7 @@ class EmployeeDetails(models.Model):
         ('internal', 'Internal'),
         ('confidential', 'Confidential'),
         ('secret', 'Secret'),
-    ])
+    ], default='public')
     employee = models.OneToOneField(User, on_delete=models.CASCADE, related_name='details')
    
 

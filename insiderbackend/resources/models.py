@@ -18,7 +18,7 @@ class Resource(models.Model):
         ('internal', 'Internal'),
         ('confidential', 'Confidential'),
         ('secret', 'Secret'),
-    ])
+    ], default='public')
 
     def __str__(self):
         return f"{self.resource_name} - {self.resource_id} - {self.uploaded_by.username}"
