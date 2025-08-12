@@ -4,244 +4,146 @@ import React, { useState } from 'react';
 import {
   Box,
   TextField,
-  Typography,
   Button,
+  Typography,
   Paper,
-  AppBar,
-  Toolbar,
-  IconButton,
+  CircularProgress,
+  createTheme,
+  ThemeProvider,
 } from '@mui/material';
+import { LockOutlined } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
-import MenuIcon from '@mui/icons-material/Menu';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 
-const FinanceLoginPage = () => {
-  const [step, setStep] = useState<'login' | 'otp'>('login');
-  const [form, setForm] = useState({ email: '', password: '', otp: '' });
-  const [loading, setLoading] = useState(false);
+interface FormData {
+  email: string;
+  password: string;
+  otp: string;
+}
+
+const LoginForm: React.FC = () => {
   const router = useRouter();
+  const [form, setForm] = useState<FormData>({ email: '', password: '', otp: '' });
+  const [step, setStep] = useState<'login' | 'otp'>('login');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
+
+  const theme = createTheme({
+    palette: {
+      mode: 'dark',
+      primary: { main: '#00bcd4' },
+      background: { default: '#0a101f', paper: 'rgba(255,255,255,0.05)' },
+    },
+    typography: { fontFamily: '"Inter","Roboto",sans-serif' },
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    setError('');
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  // Use your backend host (dev: Django default)
+  const API_BASE = typeof window !== 'undefined' ? process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000' : '';
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-
-    const res = await fetch('http://127.0.0.1:8000/auth/login/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        email: form.email,
-        password: form.password,
-      }).toString(),
-      credentials: 'include',
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      alert('OTP sent to email.');
-      setStep('otp');
-    } else {
-      alert(data.message);
+    if (!form.email || !form.password) {
+      setError('Please fill in email and password');
+      return;
     }
+    setLoading(true);
+    setError('');
 
-    setLoading(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email, password: form.password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        // backend returns detail: 'OTP sent'
+        setStep('otp');
+      } else {
+        setError(data.detail || data.message || 'Login failed');
+      }
+    } catch (err) {
+      console.error('Login error', err);
+      setError('Network error — check backend server or CORS');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleVerify = async (e: React.FormEvent) => {
+  const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-
-    const res = await fetch('http://127.0.0.1:8000/auth/verify-otp/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ otp: form.otp }).toString(),
-      credentials: 'include',
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      alert('Login successful!');
-      router.push('/employee/finance/dashboard'); // Adjust route accordingly
-    } else {
-      alert(data.message);
+    if (!form.otp) {
+      setError('Please enter the OTP');
+      return;
     }
+    setLoading(true);
+    setError('');
 
-    setLoading(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/verify-otp/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email, otp: form.otp }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.tokens && data.tokens.access) {
+        localStorage.setItem('accessToken', data.tokens.access);
+        if (data.tokens.refresh) localStorage.setItem('refreshToken', data.tokens.refresh);
+        // optionally store user minimal info
+        if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+        // redirect to your system admin dashboard
+        router.push('/employee/finance/dashboard'); // adjust route if different
+      } else {
+        setError(data.detail || data.message || 'Invalid OTP');
+      }
+    } catch (err) {
+      console.error('OTP verification error', err);
+      setError('Network error during OTP verification');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f2027 0%, #203a43 70%, #2c5364 100%)',
-        position: 'relative',
-        overflow: 'hidden',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: '-50%',
-          left: '-50%',
-          width: '200%',
-          height: '200%',
-          background: 'radial-gradient(circle, rgba(0, 188, 212, 0.1) 0%, transparent 70%)',
-          animation: 'rotate 25s linear infinite',
-          '@keyframes rotate': {
-            from: { transform: 'rotate(0deg)' },
-            to: { transform: 'rotate(360deg)' },
-          },
-          zIndex: 0,
-        },
-      }}
-    >
-      {/* Header */}
-      <AppBar position="static" sx={{ background: 'rgba(15, 32, 39, 0.9)', backdropFilter: 'blur(5px)' }}>
-        <Toolbar>
-          <IconButton edge="start" color="inherit" aria-label="menu" sx={{ mr: 2 }}>
-            <MenuIcon />
-          </IconButton>
-          <Typography variant="h6" sx={{ flexGrow: 1, color: '#00bcd4' }}>
-            Insider Threat Dashboard
-          </Typography>
-          <IconButton color="inherit">
-            <AccountCircleIcon />
-          </IconButton>
-        </Toolbar>
-      </AppBar>
-
-      {/* Main Content */}
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: 'calc(100vh - 64px)', // Adjust for header height
-          px: 2,
-          py: 4,
-          position: 'relative',
-          zIndex: 1,
-        }}
-      >
-        <Paper
-          elevation={8}
-          sx={{
-            p: 5,
-            borderRadius: 12,
-            width: '100%',
-            maxWidth: 500,
-            backdropFilter: 'blur(15px)',
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03))',
-            color: '#fff',
-            transition: 'transform 0.3s ease',
-            '&:hover': { transform: 'scale(1.02)' },
-            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.4)',
-          }}
-        >
-          <Typography
-            variant="h4"
-            fontWeight="bold"
-            gutterBottom
-            sx={{ mb: 4, textAlign: 'center', textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)' }}
-          >
-            Finance Login
+    <ThemeProvider theme={theme}>
+      <Box sx={{ minHeight: '70vh', display: 'flex', justifyContent: 'center', alignItems: 'center', px: 2 }}>
+        <Paper sx={{ p: 3, borderRadius: 2, width: '100%', maxWidth: 420 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <LockOutlined sx={{ fontSize: 36, color: '#00bcd4' }} />
+          </Box>
+          <Typography variant="h5" sx={{ mb: 1, textAlign: 'center' }}>InsiderDash — System Admin</Typography>
+          <Typography variant="body2" sx={{ mb: 2, textAlign: 'center' }}>
+            {step === 'login' ? 'Sign in with email and password' : 'Enter the OTP sent to your email'}
           </Typography>
 
-          <form onSubmit={step === 'login' ? handleLogin : handleVerify}>
-            {step === 'login' && (
+          <form onSubmit={step === 'login' ? handleLoginSubmit : handleOtpSubmit}>
+            {step === 'login' ? (
               <>
-                <TextField
-                  fullWidth
-                  label="Email"
-                  name="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  margin="normal"
-                  InputProps={{
-                    style: { color: '#fff', borderBottom: '1px solid rgba(255, 255, 255, 0.3)' },
-                  }}
-                  InputLabelProps={{ style: { color: '#ccc' } }}
-                  sx={{ mb: 2 }}
-                />
-                <TextField
-                  fullWidth
-                  label="Password"
-                  type="password"
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  margin="normal"
-                  InputProps={{
-                    style: { color: '#fff', borderBottom: '1px solid rgba(255, 255, 255, 0.3)' },
-                  }}
-                  InputLabelProps={{ style: { color: '#ccc' } }}
-                  sx={{ mb: 3 }}
-                />
+                <TextField fullWidth label="Email" name="email" value={form.email} onChange={handleChange} sx={{ mb: 1.5 }} />
+                <TextField fullWidth label="Password" name="password" type="password" value={form.password} onChange={handleChange} sx={{ mb: 1.5 }} />
               </>
+            ) : (
+              <TextField fullWidth label="OTP" name="otp" value={form.otp} onChange={handleChange} sx={{ mb: 1.5 }} />
             )}
 
-            {step === 'otp' && (
-              <TextField
-                fullWidth
-                label="OTP"
-                name="otp"
-                value={form.otp}
-                onChange={handleChange}
-                margin="normal"
-                InputProps={{
-                  style: { color: '#fff', borderBottom: '1px solid rgba(255, 255, 255, 0.3)' },
-                }}
-                InputLabelProps={{ style: { color: '#ccc' } }}
-                sx={{ mb: 3 }}
-              />
-            )}
+            {error && <Typography sx={{ color: 'error.main', mb: 1 }}>{error}</Typography>}
 
-            <Button
-              fullWidth
-              type="submit"
-              sx={{
-                mt: 2,
-                py: 1.5,
-                background: 'linear-gradient(45deg, #00bcd4, #2196f3)',
-                color: '#fff',
-                fontWeight: 'bold',
-                borderRadius: 8,
-                textTransform: 'none',
-                '&:hover': {
-                  background: 'linear-gradient(45deg, #00aaff, #00bcd4)',
-                  boxShadow: '0 4px 12px rgba(0, 188, 212, 0.5)',
-                },
-                '&:disabled': { background: 'rgba(0, 188, 212, 0.5)', cursor: 'not-allowed' },
-              }}
-              disabled={loading}
-            >
-              {loading ? 'Processing...' : (step === 'login' ? 'Send OTP' : 'Verify OTP')}
+            <Button type="submit" variant="contained" fullWidth disabled={loading} sx={{ py: 1.25 }}>
+              {loading ? <CircularProgress size={20} color="inherit" /> : step === 'login' ? 'Send OTP' : 'Verify OTP'}
             </Button>
           </form>
         </Paper>
       </Box>
-
-      {/* Footer */}
-      <Box
-        sx={{
-          mt: 'auto',
-          py: 2,
-          background: 'rgba(0, 0, 0, 0.7)',
-          textAlign: 'center',
-          width: '100%',
-          position: 'relative',
-          zIndex: 1,
-        }}
-      >
-        <Typography variant="body2" color="#d3d3d3">
-          © 2025 Insider Threat Dashboard |{' '}
-          <a href="/privacy" style={{ color: '#00bcd4', textDecoration: 'none' }}>Privacy Policy</a> |{' '}
-          <a href="/terms" style={{ color: '#00bcd4', textDecoration: 'none' }}>Terms of Service</a>
-        </Typography>
-      </Box>
-    </Box>
+    </ThemeProvider>
   );
 };
 
-export default FinanceLoginPage;
+export default LoginForm;
