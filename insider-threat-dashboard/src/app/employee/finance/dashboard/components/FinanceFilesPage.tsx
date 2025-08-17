@@ -1,94 +1,124 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import useSWR from 'swr';
 import {
-  Box,
-  Typography,
-  Button,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  TextField,
-  Chip,
-  Divider,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  InputAdornment,
-  IconButton,
+  Box, Typography, Button, List, ListItem, ListItemIcon, ListItemText,
+  TextField, Chip, Divider, Dialog, DialogTitle, DialogContent, DialogActions,
+  InputAdornment, IconButton, Snackbar, Alert
 } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import DescriptionIcon from '@mui/icons-material/Description';
 import SearchIcon from '@mui/icons-material/Search';
 import DownloadIcon from '@mui/icons-material/Download';
-
 import TopNavBar from '@/app/components/TopNavBar';
 import FooterSection from '@/app/components/FooterSection';
+import { apiGet, apiPost } from '@/lib/api';
+import { ResourceDto } from '@/types/resource';
+import EditAccessDialog from '@/app/components/EditAccessDialog';
 
-interface FileItem {
+type UiFile = {
   id: number;
   name: string;
   type: 'folder' | 'file';
-  access: 'open' | 'restricted';
-  content?: string;
-}
+  access: 'open' | 'restricted' | 'full_control' | 'none' | 'upload' | 'download' | 'delete';
+};
 
-const initialFiles: FileItem[] = [
-  { id: 1, name: 'Payroll Records', type: 'file', access: 'restricted', content: 'Confidential Payroll Data' },
-  { id: 2, name: 'Invoices Q1', type: 'file', access: 'open', content: 'Invoice details for Q1' },
-  { id: 3, name: 'Finance Reports', type: 'folder', access: 'restricted' },
-  { id: 4, name: 'Budgets 2025', type: 'file', access: 'open', content: 'Projected budgets for 2025' },
-  { id: 5, name: 'Audit Documents', type: 'folder', access: 'restricted' },
-  { id: 6, name: 'Staff Salaries', type: 'file', access: 'restricted', content: 'Salaries breakdown' },
-  { id: 7, name: 'Bank Statements', type: 'file', access: 'restricted', content: 'Statements from Jan to Mar' },
-  { id: 8, name: 'Expense Claims', type: 'file', access: 'open', content: 'Expense claim summaries' },
-  { id: 9, name: 'Quarterly Reviews', type: 'folder', access: 'open' },
-  { id: 10, name: 'Receipts', type: 'file', access: 'open', content: 'Receipt images and records' },
-];
+const DEPT_ID = 1; // finance department id in your DB
 
-const SharedFilesPage = () => {
-  const [files, setFiles] = useState<FileItem[]>(initialFiles);
+export default function SharedFilesPage() {
+  const { data, error, mutate } = useSWR<ResourceDto[]>('/resources/', apiGet);
   const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [previewDialog, setPreviewDialog] = useState(false);
-  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
-  const [newItem, setNewItem] = useState({ name: '', type: 'file' });
+  const [previewText, setPreviewText] = useState<string>('');
+  const [newItem, setNewItem] = useState({ name: '', type: 'file' as 'file' | 'folder' });
+  const [toast, setToast] = useState<{open: boolean; msg: string; severity: 'success'|'error'|'info'}>({open:false,msg:'',severity:'success'});
 
-  const filteredFiles = files.filter((file) =>
-    file.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const files: UiFile[] = useMemo(() => {
+    if (!data) return [];
+    // Map API to UI items. Access label is determined by backend policy; here we default to "restricted".
+    return data.map(r => ({
+      id: r.id,
+      name: r.name,
+      type: r.is_folder ? 'folder' : 'file',
+      access: 'restricted',
+    }));
+  }, [data]);
 
-  const handleAddFile = () => {
-    if (newItem.name.trim()) {
-      const newFile: FileItem = {
-        id: Date.now(),
+  const filteredFiles = files.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  async function handleAddFile() {
+    if (!newItem.name.trim()) return;
+    try {
+      // POST to create Resource on the backend
+      const payload = {
         name: newItem.name,
-        type: newItem.type as 'file' | 'folder',
-        access: 'restricted',
-        content: newItem.type === 'file' ? 'Newly created file content' : undefined,
+        path: newItem.type === 'file' ? `resources/${Date.now()}_${newItem.name}.txt` : `folders/${Date.now()}_${newItem.name}/`,
+        is_folder: newItem.type === 'folder',
+        department: DEPT_ID,
       };
-      setFiles([newFile, ...files]);
-      setNewItem({ name: '', type: 'file' });
+      await apiPost<ResourceDto>('/resources/', payload);
       setOpenDialog(false);
+      setNewItem({ name: '', type: 'file' });
+      setToast({open:true,msg:'Created successfully',severity:'success'});
+      mutate(); // refresh list
+    } catch (e:any) {
+      setToast({open:true,msg:e?.message || 'Create failed',severity:'error'});
     }
-  };
+  }
 
-  const handleOpen = (file: FileItem) => {
-    setPreviewFile(file);
-    setPreviewDialog(true);
-  };
+  async function handleOpen(file: UiFile) {
+    try {
+      // GET detail to enforce RBAC + create AuditLog (server side).
+      const r = await apiGet<ResourceDto>(`/resources/${file.id}/`);
+      // You might have a file preview endpoint; demo shows metadata.
+      setPreviewText(`Name: ${r.name}\nPath: ${r.path}\nCreated by: ${r.created_by ?? '—'}\nCreated: ${new Date(r.created_at).toLocaleString()}`);
+      setPreviewDialog(true);
+      
+    } catch (e:any) {
+      const code = `${e.message}`;
+      setToast({open:true,msg: code==='403' ? 'Access denied' : `Open failed (${code})`, severity: 'error'});
+    }
+  }
+      const [editOpen, setEditOpen] = useState(false);
+      const [selectedResourceId, setSelectedResourceId] = useState<number | null>(null);
+      // optionally store current name/path to prefill
+      const [selectedResourceName, setSelectedResourceName] = useState('');
+      const [selectedResourcePath, setSelectedResourcePath] = useState('');
 
-  const handleDownload = (file: FileItem) => {
-    const blob = new Blob([file.content || 'No content'], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${file.name}.txt`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
+  interface EditResourceDto {
+    id: number;
+    name: string;
+    path: string;
+  }
+
+  function handleOpenEdit(resourceDto: EditResourceDto) {
+    setSelectedResourceId(resourceDto.id);
+    setSelectedResourceName(resourceDto.name);
+    setSelectedResourcePath(resourceDto.path);
+    setEditOpen(true);
+  }
+
+  async function handleDownload(file: UiFile) {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      const base = process.env.NEXT_PUBLIC_BACKEND_URL;
+      const url = `${base}/resources/${file.id}/download/`;
+      const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${file.name}${file.type==='file'?'.txt':''}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (e:any) {
+      const code = `${e.message}`;
+      setToast({open:true,msg: code==='403' ? 'No permission to download' : `Download failed (${code})`, severity: 'error'});
+      setToast({open:true,msg: code==='401' ? 'Forbidden' : `Download failed (${code})`, severity: 'error'});
+    }
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', background: '#0a101f', color: '#fff' }}>
@@ -120,20 +150,14 @@ const SharedFilesPage = () => {
               <Button
                 variant="outlined"
                 sx={{ mr: 2, borderColor: '#00bcd4', color: '#00bcd4' }}
-                onClick={() => {
-                  setNewItem({ name: '', type: 'file' });
-                  setOpenDialog(true);
-                }}
+                onClick={() => { setNewItem({ name: '', type: 'file' }); setOpenDialog(true); }}
               >
                 New File
               </Button>
               <Button
                 variant="outlined"
                 sx={{ borderColor: '#00bcd4', color: '#00bcd4' }}
-                onClick={() => {
-                  setNewItem({ name: '', type: 'folder' });
-                  setOpenDialog(true);
-                }}
+                onClick={() => { setNewItem({ name: '', type: 'folder' }); setOpenDialog(true); }}
               >
                 New Folder
               </Button>
@@ -142,30 +166,45 @@ const SharedFilesPage = () => {
 
           <Divider sx={{ mb: 2, borderColor: '#1a2a3c' }} />
 
+          {error && (
+            <Alert severity="error" sx={{ mb:2 }}>
+              Failed to load resources (are you logged in? token missing? CORS?)
+            </Alert>
+          )}
+
           <List sx={{ bgcolor: 'transparent' }}>
             {filteredFiles.map((file) => (
               <ListItem
                 key={file.id}
-                sx={{
-                  bgcolor: '#1c2a3a',
-                  mb: 1,
-                  borderRadius: 2,
-                  '&:hover': { backgroundColor: '#27394e' },
-                  cursor: 'pointer',
-                }}
+                sx={{ bgcolor: '#1c2a3a', mb: 1, borderRadius: 2, '&:hover': { backgroundColor: '#27394e' }, cursor: 'pointer' }}
                 onClick={() => handleOpen(file)}
-                secondaryAction={
+              >
+                <Button
+                    size="small"
+                    onClick={(e)=> { 
+                      e.stopPropagation(); 
+                      handleOpenEdit({ id: file.id, name: file.name, path: file.name }); 
+                    }}
+                  >
+                    Manage
+                  </Button>
+                  secondaryAction={
                   file.type === 'file' && (
-                    <IconButton edge="end" onClick={(e) => {
-                      e.stopPropagation();
-                      handleDownload(file);
-                    }}>
+                    <IconButton edge="end" onClick={(e) => { e.stopPropagation(); handleDownload(file); }}>
                       <DownloadIcon sx={{ color: '#00bcd4' }} />
                     </IconButton>
                   )
                 }
-              >
-                <ListItemIcon sx={{ color: '#00bcd4' }}>
+                <EditAccessDialog
+                  open={editOpen}
+                  onClose={() => setEditOpen(false)}
+                  resourceId={selectedResourceId!}
+                  initialName={selectedResourceName}
+                  initialPath={selectedResourcePath}
+                  onSaved={() => { mutate(); /* refresh list */ setEditOpen(false); }}
+                />
+
+                  <ListItemIcon sx={{ color: '#00bcd4' }}>
                   {file.type === 'folder' ? <FolderIcon /> : <DescriptionIcon />}
                 </ListItemIcon>
                 <ListItemText
@@ -188,7 +227,7 @@ const SharedFilesPage = () => {
 
       <FooterSection />
 
-      {/* Create File/Folder Dialog */}
+      {/* Create */}
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
         <DialogTitle>Create New {newItem.type === 'folder' ? 'Folder' : 'File'}</DialogTitle>
         <DialogContent>
@@ -202,36 +241,26 @@ const SharedFilesPage = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-          <Button onClick={handleAddFile} variant="contained">
-            Create
-          </Button>
+          <Button onClick={handleAddFile} variant="contained">Create</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Preview Dialog */}
+      {/* Preview */}
       <Dialog open={previewDialog} onClose={() => setPreviewDialog(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{previewFile?.name}</DialogTitle>
+        <DialogTitle>Preview</DialogTitle>
         <DialogContent dividers sx={{ minHeight: 100 }}>
-          {previewFile?.type === 'file' ? (
-            <Typography variant="body2">{previewFile?.content}</Typography>
-          ) : (
-            <Typography variant="body2">Folder contents will be shown here...</Typography>
-          )}
+          <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{previewText}</pre>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPreviewDialog(false)}>Close</Button>
-          {previewFile?.type === 'file' && (
-            <Button
-              variant="contained"
-              onClick={() => previewFile && handleDownload(previewFile)}
-            >
-              Download
-            </Button>
-          )}
         </DialogActions>
       </Dialog>
+
+      <Snackbar open={toast.open} autoHideDuration={3000} onClose={()=>setToast({...toast,open:false})}>
+        <Alert onClose={()=>setToast({...toast,open:false})} severity={toast.severity} sx={{ width: '100%' }}>
+          {toast.msg}
+        </Alert>
+      </Snackbar>
     </Box>
   );
-};
-
-export default SharedFilesPage;
+}

@@ -8,8 +8,8 @@ User = get_user_model()
 class ResourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Resource
-        fields = ['id', 'name', 'type']  # adjust fields if needed
-
+        fields = ('id', 'name', 'path', 'is_folder', 'department', 'created_by', 'created_at')
+        read_only_fields = ('created_by', 'created_at')
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

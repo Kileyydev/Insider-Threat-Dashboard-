@@ -5,25 +5,30 @@ from django.core.mail import send_mail
 from django.http import FileResponse, Http404, JsonResponse
 from django.utils.crypto import get_random_string
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
-from rest_framework import status, permissions
-import logging
+from rest_framework import status, permissions, generics, viewsets, serializers
 from datetime import timedelta
 from django.shortcuts import get_object_or_404
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from django.utils import timezone
 from django.middleware.csrf import get_token
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from .models import Resource, AccessControl
 from .serializers import UserSerializer, ResourceSerializer, AccessControlSerializer
-from .models import User, OTP
+from .models import User, OTP, Resource, AuditLog, Department
+from rest_framework.serializers import ModelSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.db.models import Q
+from .permissions import RoleEnforcer
+from .models import ResourceAccess
+from django.db import transaction
 
 import os
 import logging
 
 logger = logging.getLogger(__name__)
 
-ACCESS_PRIORITY = {"read": 1, "write": 2, "delete": 3}
+ACCESS_PRIORITY = {"read": 1, "write": 2, "delete": 3, "none": 4,  "upload": 5,"download": 6,"full_control": 7}
 
 User = get_user_model()
 
@@ -54,8 +59,7 @@ def list_users(request):
         else:
             return Response({'detail': 'Validation error', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-from rest_framework_simplejwt.tokens import RefreshToken
-from .models import AuditLog
+
 
 # Helper: generate JWT tokens for user
 def get_tokens_for_user(user):
@@ -284,10 +288,6 @@ def get_csrf(request):
     return JsonResponse({'detail': 'CSRF cookie set'})
 
 
-from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.serializers import ModelSerializer
-
 class GroupSerializer(ModelSerializer):
     class Meta:
         model = Group
@@ -341,15 +341,20 @@ def assign_resource_access(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def download_resource(request, pk):
-    try:
-        file_path = f"media/resources/sample_{pk}.txt"
-        if not os.path.exists(file_path):
-            raise Http404("File not found")
-        return FileResponse(open(file_path, 'rb'), as_attachment=True)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+    resource = get_object_or_404(Resource, pk=pk)
 
+    perm = RoleEnforcer()
+    # has_object_permission returns True/False
+    if not perm.has_object_permission(request, None, resource):
+        return Response({'detail': 'Access denied'}, status=403)
 
+    file_path = os.path.join(settings.MEDIA_ROOT, resource.path)
+    if not os.path.exists(file_path):
+        return Response({'detail': 'File not found'}, status=404)
+
+    # Log download
+    log_action(request.user, 'download_resource', resource=resource, ip=request.META.get('REMOTE_ADDR'))
+    return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=resource.name)
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -357,10 +362,6 @@ def audit_logs(request):
     logs = AuditLog.objects.all().order_by('-timestamp')  # fetch real logs, newest first
     serializer = AuditLogSerializer(logs, many=True)
     return Response({"audit_logs": serializer.data})
-
-# serializers.py
-from rest_framework import serializers
-from .models import AuditLog
 
 class AuditLogSerializer(serializers.ModelSerializer):
     user = serializers.CharField(source='actor.email')  # adjust if your AuditLog has an actor FK to User
@@ -391,19 +392,153 @@ def list_groups(request):
     serializer = GroupSerializer(groups, many=True)
     return Response(serializer.data)
 
-from rest_framework import viewsets
-from .models import Resource
-from .serializers import ResourceSerializer
-from rest_framework.permissions import IsAuthenticated
+class ResourceViewSet(viewsets.ModelViewSet):
 
-class ResourceViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Full CRUD for Resource with RBAC enforced by RoleEnforcer.
+    """
     queryset = Resource.objects.all()
     serializer_class = ResourceSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RoleEnforcer]
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from .models import Resource
-from .serializers import ResourceSerializer
 
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        user = self.request.user
+
+        # Ensure department is set (as previous guidance)
+        dept = getattr(user, 'department', None)
+        if dept is None:
+            from .models import Department
+            dept, _ = Department.objects.get_or_create(name='IT')
+
+        resource = serializer.save(created_by=user, department=dept)
+
+        # Create role-based ResourceAccess defaults if desired (optional):
+        # e.g., ensure managers get write, employees get read - implement as you wish
+
+        # Always give owner full_control via ResourceAccess (user-specific)
+        ResourceAccess.objects.create(
+            resource=resource,
+            role=None,   # null role to indicate user-specific? If your model requires role non-null, skip role and set user on AccessControl below
+            # If your ResourceAccess requires role non-null, instead create AccessControl for the user:
+        )
+
+        # Create AccessControl (user-specific) giving owner full control
+        from .models import AccessControl
+        AccessControl.objects.create(user=user, resource=resource, permission='full_control')
+
+        log_action(user, 'create_resource', resource=resource, ip=self.request.META.get('REMOTE_ADDR'))
+        return resource
+
+
+    def retrieve(self, request, *args, **kwargs):
+        # object-level permission will be checked by RoleEnforcer.has_object_permission
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        # Log the access (view)
+        log_action(request.user, 'view_resource', resource=instance, ip=request.META.get('REMOTE_ADDR'))
+        # Optionally record a download if file served separately
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # will call permission checks
+        log_action(request.user, 'delete_resource', resource=instance, ip=request.META.get('REMOTE_ADDR'))
+        return super().destroy(request, *args, **kwargs)
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_resource(request, pk):
+    try:
+        resource = Resource.objects.get(pk=pk)
+    except Resource.DoesNotExist:
+        return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'DELETE':
+        resource.delete()
+        log_action(request.user, 'delete_resource', resource=resource, ip=request.META.get('REMOTE_ADDR'))
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    return Response({'error': 'Method not allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+@api_view(['PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def update_resource(request, pk):
+    try:
+        resource = Resource.objects.get(pk=pk)
+    except Resource.DoesNotExist:
+        return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = ResourceSerializer(resource, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        log_action(request.user, 'update_resource', resource=resource, ip=request.META.get('REMOTE_ADDR'))
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['PUT', 'PATCH'])
+def update_user(request, pk):
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'PUT':
+        serializer = UserSerializer(user, data=request.data)
+    elif request.method == 'PATCH':
+        serializer = UserSerializer(user, data=request.data, partial=True)
+
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+
+    return Response({'error': 'Invalid data'}, status=status.HTTP_400_BAD_REQUEST)
+
+# users/views.py
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def assign_resource_access(request):
+    """
+    Payload:
+    {
+      "resource_id": 1,
+      "role_id": 2,        # optional (role-level)
+      "user_id": 3,        # optional (user-level)
+      "permission": "read" # or full_control/write/delete/none
+    }
+    """
+    user = request.user
+    data = request.data
+    resource_id = data.get('resource_id')
+    role_id = data.get('role_id')
+    user_id = data.get('user_id')
+    permission = data.get('permission')
+
+    if not resource_id or not permission:
+        return Response({"error": "resource_id and permission required"}, status=400)
+
+    resource = get_object_or_404(Resource, pk=resource_id)
+
+    # Only allow owner or manager or superuser to assign access
+    perm_checker = RoleEnforcer()
+    if not (user.is_superuser or resource.created_by_id == user.id or getattr(user.role,'level',0) >= 3):
+        return Response({"detail":"Not allowed"}, status=403)
+
+    if role_id:
+        role = get_object_or_404(Role, pk=role_id)
+        ra, created = ResourceAccess.objects.update_or_create(resource=resource, role=role,
+                                                            defaults={'access_level': permission})
+        action = 'created' if created else 'updated'
+        log_action(user, f'assign_role_access_{action}', resource=resource, metadata={'role': role.name, 'perm': permission})
+        return Response({"detail": f"Role access {action}"}, status=200)
+
+    if user_id:
+        tuser = get_object_or_404(User, pk=user_id)
+        ac, created = AccessControl.objects.update_or_create(user=tuser, resource=resource, defaults={'permission': permission})
+        action = 'created' if created else 'updated'
+        log_action(user, f'assign_user_access_{action}', resource=resource, metadata={'user': tuser.email, 'perm': permission})
+        return Response({"detail": f"User access {action}"}, status=200)
+
+    return Response({"detail":"role_id or user_id required"}, status=400)

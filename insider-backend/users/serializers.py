@@ -1,9 +1,9 @@
 # users/serializers.py
-
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from .models import Department, Role, Resource, ResourceAccess, AuditLog
+from .models import Department, Role, Resource, ResourceAccess, AuditLog, AccessControl, User
+from rest_framework import serializers
 
 User = get_user_model()
 
@@ -89,9 +89,35 @@ class UpdateUserSerializer(serializers.ModelSerializer):
         
 # Resource Serializer
 class ResourceSerializer(serializers.ModelSerializer):
+    department = serializers.CharField(source='department.name', read_only=True)
+    created_by = serializers.CharField(source='created_by.email', read_only=True)
+    access_for_current_user = serializers.SerializerMethodField()
+
     class Meta:
         model = Resource
-        fields = '__all__'
+        fields = ('id','name','path','is_folder','department','created_by','created_at','access_for_current_user')
+    
+    def get_access_for_current_user(self, obj):
+        request = self.context.get('request', None)
+        if not request or not request.user.is_authenticated:
+            return 'none'
+        user = request.user
+        # check AccessControl
+        ac = AccessControl.objects.filter(user=user, resource=obj).first()
+        if ac:
+            return ac.permission
+        # check Role
+        if getattr(user,'role',None):
+            ra = ResourceAccess.objects.filter(resource=obj, role=user.role).first()
+            if ra:
+                return ra.access_level
+        # owner fallback
+        if obj.created_by_id == user.id:
+            return 'full_control'
+        # department fallback
+        if getattr(user,'department',None) and obj.department == user.department:
+            return 'read'
+        return 'none'
 
 
 # Resource Access Serializer
@@ -110,8 +136,7 @@ class AuditLogSerializer(serializers.ModelSerializer):
         model = AuditLog
         fields = '__all__'
 
-from rest_framework import serializers
-from .models import AccessControl
+
 
 class AccessControlSerializer(serializers.ModelSerializer):
     class Meta:
@@ -119,8 +144,7 @@ class AccessControlSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 # users/serializers.py
-from django.contrib.auth.models import Group
-from rest_framework import serializers
+
 
 class GroupSerializer(serializers.ModelSerializer):
     class Meta:
