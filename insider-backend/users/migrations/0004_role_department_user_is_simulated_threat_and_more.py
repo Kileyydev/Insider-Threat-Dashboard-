@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='user',
             name='department',
-            field=models.CharField(default='4', max_length=50),
+            field=models.ForeignKey(max_length=50, null=True, blank=True, on_delete=django.db.models.deletion.SET_NULL, related_name='users', to='users.Department'),
         ),
         migrations.AlterUniqueTogether(
             name='role',

@@ -43,6 +43,9 @@ import {
 import TopNavBar from '@/app/components/TopNavBar';
 import FooterSection from '@/app/components/FooterSection';
 import Sidebar from '../components/SideBar';
+import { createAlertsSocket } from '@/lib/alertsSockets';
+import useSWR from 'swr';
+import { apiGet } from '@/lib/api'; 
 
 const API_BASE =
   typeof window !== 'undefined'
@@ -77,6 +80,17 @@ interface AlertItem {
 }
 
 export default function InsiderThreatDashboard() {
+
+  const { data: alertsData, mutate } = useSWR('/monitoring/alerts/', apiGet, { refreshInterval: 0 });
+
+  useEffect(() => {
+    const ws = createAlertsSocket((alert) => {
+      // show notification + prepend to SWR cache
+      mutate((existing: any[] = []) => [alert, ...existing], false);
+    });
+    return () => ws && ws.close();
+  }, [mutate]);
+
   const [tabIndex, setTabIndex] = useState(0);
 
   // Logs state

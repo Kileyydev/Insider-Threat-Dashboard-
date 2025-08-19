@@ -48,6 +48,7 @@ class Role(models.Model):
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True, null=True)
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='roles')
+    level = models.PositiveSmallIntegerField(default=1)
 
     class Meta:
         unique_together = ('name', 'department')
@@ -61,12 +62,11 @@ class Role(models.Model):
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=255, blank=True)
-    department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL, related_name='users')
     role = models.ForeignKey(Role, null=True, blank=True, on_delete=models.SET_NULL, related_name='users')
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_simulated_threat = models.BooleanField(default=False, help_text="Flag user as insider threat simulation")
-    department = models.CharField(max_length=50, default='IT')
+    department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL, related_name='users')
 
     objects = UserManager()
 
@@ -111,6 +111,10 @@ ACCESS_LEVELS = (
     ('read', 'Read'),
     ('write', 'Write'),
     ('download', 'Download'),
+    ('delete', 'Delete'),
+    ('upload', 'Upload'),
+    ('none', 'No Access'),
+    ('full_control', 'Full Access')
 )
 
 class Resource(models.Model):
@@ -128,7 +132,7 @@ class ResourceAccess(models.Model):
     resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name='access_entries')
     role = models.ForeignKey(Role, null=True, blank=True, on_delete=models.CASCADE, related_name='resource_access')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE, related_name='resource_access')
-    access_level = models.CharField(max_length=16, choices=ACCESS_LEVELS)
+    access_level = models.CharField(max_length=20, choices=ACCESS_LEVELS)
 
     class Meta:
         unique_together = ('resource', 'role', 'user')
@@ -155,12 +159,16 @@ class AccessControl(models.Model):
     PERMISSION_CHOICES = [
         ('read', 'Read'),
         ('write', 'Write'),
-        ('none', 'No Access')
+        ('download', 'Download'),
+        ('delete', 'Delete'),
+        ('upload', 'Upload'),
+        ('none', 'No Access'),
+        ('full_control', 'Full Access')
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='access_controls')
     resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name='access_controls')
-    permission = models.CharField(max_length=10, choices=PERMISSION_CHOICES)
+    permission = models.CharField(max_length=100, choices=PERMISSION_CHOICES)
 
 
     class Meta:
@@ -168,12 +176,4 @@ class AccessControl(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.resource.name} - {self.permission}"
-    
-@api_view(['PUT', 'PATCH'])
-def update_user(request, pk):
-    try:
-        user = User.objects.get(pk=pk)
-    except User.DoesNotExist:
-        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
     

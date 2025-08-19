@@ -2,7 +2,6 @@ from django.db import models
 from django.conf import settings
 from django.contrib.auth.models import Group
 
-
 class Department(models.Model):
     name = models.CharField(max_length=100, unique=True)
 
@@ -27,12 +26,16 @@ class ResourceAccess(models.Model):
         ('read', 'Read'),
         ('write', 'Write'),
         ('download', 'Download'),
+        ('delete', 'Delete'),
+        ('upload', 'Upload'),
+        ('none', 'No Access'),
+        ('full_control', 'Full Access')
     ]
 
     resource = models.ForeignKey(Resource, on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE)
     group = models.ForeignKey(Group, null=True, blank=True, on_delete=models.CASCADE)  # <== This field
-    access_level = models.CharField(max_length=10, choices=ACCESS_CHOICES)
+    access_level = models.CharField(max_length=20, choices=ACCESS_CHOICES)
 
     class Meta:
         unique_together = ('resource', 'user', 'group')
