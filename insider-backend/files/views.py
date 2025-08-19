@@ -66,5 +66,3 @@ def list_users(request):
     return Response(serializer.data)
 
 
-# You can add more views as needed for user creation, updating, etc.
-
