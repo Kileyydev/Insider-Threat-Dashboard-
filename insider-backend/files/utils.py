@@ -1,5 +1,5 @@
-# Access priority mapping (put this in utils.py or views.py)
-ACCESS_PRIORITY = {'read': 1, 'download': 2, 'write': 3}
+# Access priority mapping
+ACCESS_PRIORITY = {'none': 0, 'read': 1, 'download': 2, 'write': 3, 'full_control': 4}
 
 def highest_access_level_for_user_and_resource(user, resource):
     from files.models import ResourceAccess
@@ -17,5 +17,5 @@ def highest_access_level_for_user_and_resource(user, resource):
     return None
 
 def log_action(actor, action, resource=None, ip=None, metadata=None):
-    from users.models import AuditLog  # adjust import as necessary
+    from users.models import AuditLog  
     AuditLog.objects.create(actor=actor, action=action, resource=resource, ip_address=ip, metadata=metadata or {})

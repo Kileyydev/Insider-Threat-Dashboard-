@@ -16,9 +16,9 @@ from dotenv import load_dotenv
 import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / '.env')   # requires python-dotenv (pip install python-dotenv)
+load_dotenv(BASE_DIR / '.env')   
 
-DATABASE_URL = os.getenv("DATABASE_URL")  # paste from your provider
+DATABASE_URL = os.getenv("DATABASE_URL")  
 if DATABASE_URL:
     DATABASES = {
         "default": dj_database_url.parse(
@@ -35,18 +35,11 @@ else:
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-&v+)3$glzzu-kup2cx8%(3&_+n_4q)vh7_kv)tc+@htv(shv(z'
 
-# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
 ALLOWED_HOSTS = []
-
 
 # Application definition
 
@@ -196,8 +189,10 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Redis broker URL
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'  # Redis result backend
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
+
 
 # Celery Beat scheduler for periodic tasks
 INSTALLED_APPS += ['django_celery_beat']
@@ -211,6 +206,15 @@ CHANNEL_LAYERS = {
         'CONFIG': {
             "hosts": [("127.0.0.1", 6379)],
         },
+    },
+}
+
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'run-detections-every-minute': {
+        'task': 'monitoring.run_all_detections',
+        'schedule': 60.0,  # every 60s; adjust as needed
     },
 }
 

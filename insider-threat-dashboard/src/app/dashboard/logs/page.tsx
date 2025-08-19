@@ -45,7 +45,7 @@ import TopNavBar from '@/app/components/TopNavBar';
 import Sidebar from '../components/SideBar';
 import { createAlertsSocket } from '@/lib/alertsSockets';
 import useSWR from 'swr';
-import { apiGet } from '@/lib/api';
+import { apiGetWithAuth } from '@/lib/api'; 
 
 const API_BASE =
   typeof window !== 'undefined'
@@ -135,22 +135,13 @@ function FooterSection() {
 }
 
 export default function InsiderThreatDashboard() {
-  const { data: alertsData, mutate } = useSWR('/monitoring/alerts/', apiGet, { refreshInterval: 0 });
-
-  useEffect(() => {
-    const ws = createAlertsSocket((alert) => {
-      mutate((existing: any[] = []) => [alert, ...existing], false);
-    });
-    return () => ws && ws.close();
-  }, [mutate]);
 
   const [tabIndex, setTabIndex] = useState(0);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState('');
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [alertsLoading, setAlertsLoading] = useState(false);
-  const [alertsError, setAlertsError] = useState('');
+
+  // Filters
   const [logSearch, setLogSearch] = useState('');
   const [alertFilterSeverity, setAlertFilterSeverity] = useState<'all' | 'low' | 'medium' | 'high'>('all');
   const [token, setToken] = useState<string | null>(null);
@@ -194,42 +185,55 @@ export default function InsiderThreatDashboard() {
       setLogsLoading(false);
     }
   }
+   const {
+      data: alertsData = [],
+      isLoading: alertsLoading,
+      error: alertsError,
+      mutate: mutateAlerts,
+    } = useSWR(
+      token ? `${API_BASE}/api/monitoring/alerts/` : null,
+      (url) => apiGetWithAuth(url, token)
+  );
 
+  useEffect(() => {
+    if (!token) return;
+    const ws = createAlertsSocket(token, (alert) => {
+      mutateAlerts((existing: any[] = []) => [alert, ...existing], false);
+    });
+    return () => ws && ws.close();
+  }, [token, mutateAlerts]);
+
+    async function clearAlert(alertId: number) {
+    const res = await fetch(`${API_BASE}/api/monitoring/alerts/${alertId}/clear/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) { alert('Failed to clear alert'); return; }
+    // optimistic update
+    mutateAlerts((existing: any[] = []) =>
+      existing.map((a: any) => (a.id === alertId ? { ...a, cleared: true } : a)), false
+    );
+  }
+
+  // Use alertsData everywhere below instead of 'alerts'
+  const alerts = alertsData as AlertItem[];
   async function fetchAlerts() {
-    setAlertsLoading(true);
-    setAlertsError('');
+    alertsLoading;
     try {
       const res = await fetch(`${API_BASE}/api/monitoring/alerts/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Failed to fetch alerts');
       const data = await res.json();
-      setAlerts(data.alerts || data);
+      // alertsData(data.alerts || data); // Not needed, SWR handles data.
     } catch (e: any) {
-      setAlertsError(e.message || 'Error loading alerts');
+      // alertsError(e.message || 'Error loading alerts'); // Not needed, SWR handles error.
     } finally {
-      setAlertsLoading(false);
+      alertsLoading;
     }
   }
 
-  async function clearAlert(alertId: number) {
-    try {
-      const res = await fetch(`${API_BASE}/api/monitoring/alerts/${alertId}/clear/`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!res.ok) throw new Error('Failed to clear alert');
-      setAlerts((prev) =>
-        prev.map((a) => (a.id === alertId ? { ...a, cleared: true } : a))
-      );
-    } catch {
-      alert('Error clearing alert');
-    }
-  }
-
+  // Filtered logs by search term
   const filteredLogs = logs.filter(
     (log) =>
       log.user.toLowerCase().includes(logSearch.toLowerCase()) ||

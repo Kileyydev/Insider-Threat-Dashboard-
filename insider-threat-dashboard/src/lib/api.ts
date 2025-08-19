@@ -32,3 +32,12 @@ export async function apiPut<T = any>(path: string, body: unknown) {
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as T;
 }
+export async function apiGetWithAuth(url: string, token: string | null) {
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include', // if you also use cookies
+  });
+  if (!res.ok) throw new Error(`GET ${url} failed`);
+  return res.json();
+}
+

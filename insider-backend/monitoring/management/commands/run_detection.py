@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from monitoring.models import Alert
-from users.models import AuditLog  # Adjust if your AuditLog is in a different app
+from users.models import AuditLog 
 from datetime import timedelta
 from django.utils import timezone
 from django.contrib.auth import get_user_model
