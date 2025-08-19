@@ -27,12 +27,13 @@ import {
   Select,
   MenuItem,
   Chip,
+  Container,
 } from '@mui/material';
 import { Edit, Delete, Person, KeyboardArrowLeft, Close, Add } from '@mui/icons-material';
 import { SelectChangeEvent } from '@mui/material/Select';
+import { useRouter } from 'next/navigation';
 import TopNavBar from '@/app/components/TopNavBar';
 import Sidebar from '../components/SideBar';
-import FooterSection from '@/app/components/FooterSection';
 
 interface User {
   id: number;
@@ -62,7 +63,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000';
 // Helper function to get cookie value
 function getCookie(name: string) {
   let cookieValue = null;
-  if (document.cookie && document.cookie !== '') {
+  if (typeof document !== 'undefined' && document.cookie && document.cookie !== '') {
     const cookies = document.cookie.split(';');
     for (let cookie of cookies) {
       cookie = cookie.trim();
@@ -75,15 +76,12 @@ function getCookie(name: string) {
   return cookieValue;
 }
 
-
 // Helper function to make authenticated requests with CSRF protection
 async function makeRequest(url: string, options: RequestInit = {}) {
-  // First ensure we have CSRF token
   await fetch(`${API_BASE}/api/csrf/`, {
     credentials: 'include',
   });
 
-  // Merge headers
   const headers = new Headers(options.headers || {});
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
@@ -95,18 +93,44 @@ async function makeRequest(url: string, options: RequestInit = {}) {
     }
   }
 
-  // Add authorization if we have a token
-  const token = localStorage.getItem('accessToken');
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('accessToken') : null;
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  // Make the request with credentials
   return fetch(url, {
     ...options,
     headers,
     credentials: 'include',
   });
+}
+
+// FooterSection component (replace with your actual FooterSection if different)
+function FooterSection() {
+  return (
+    <Box
+      component="footer"
+      sx={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        width: '100%',
+        background: 'rgba(15, 32, 39, 0.95)',
+        backdropFilter: 'blur(8px)',
+        color: '#fff',
+        py: 2,
+        textAlign: 'center',
+        zIndex: 1200,
+        borderTop: '1px solid rgba(0, 188, 212, 0.2)',
+      }}
+    >
+      <Container>
+        <Typography variant="body2" sx={{ color: '#bbb', fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+          © {new Date().getFullYear()} Insider Threat Dashboard. All rights reserved.
+        </Typography>
+      </Container>
+    </Box>
+  );
 }
 
 export default function AdminTabsPage() {
@@ -142,11 +166,12 @@ export default function AdminTabsPage() {
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
   const [updateSetting, setUpdateSetting] = useState<string>('');
   const [updateValue, setUpdateValue] = useState<string | boolean>('');
-  const token = useMemo(() => localStorage.getItem('accessToken'), []);
+  const token = useMemo(() => typeof localStorage !== 'undefined' ? localStorage.getItem('accessToken') : null, []);
+  const router = useRouter();
 
   useEffect(() => {
     if (!token) return;
-    
+
     async function fetchGroups() {
       try {
         const res = await makeRequest(`${API_BASE}/api/groups/`);
@@ -203,6 +228,24 @@ export default function AdminTabsPage() {
   useEffect(() => {
     fetchFiles();
   }, [token]);
+
+  const handleLogout = async () => {
+    try {
+      await makeRequest(`${API_BASE}/api/logout/`, {
+        method: 'POST',
+      });
+      localStorage.removeItem('accessToken');
+      document.cookie = 'csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+      document.cookie = 'sessionid=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      localStorage.removeItem('accessToken');
+      document.cookie = 'csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+      document.cookie = 'sessionid=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+      router.push('/login');
+    }
+  };
 
   const filteredUsers = users.filter(
     u => u.email.toLowerCase().includes(searchTerm.toLowerCase()) || (u.full_name && u.full_name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -482,37 +525,103 @@ export default function AdminTabsPage() {
   }, {});
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #0a101f 0%, #1f2c3e 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: '-20%',
+          left: '-20%',
+          width: '140%',
+          height: '140%',
+          background: 'radial-gradient(circle, rgba(0, 188, 212, 0.15) 0%, transparent 70%)',
+          animation: 'pulse 15s ease-in-out infinite',
+          zIndex: 0,
+          '@keyframes pulse': {
+            '0%': { transform: 'scale(1)', opacity: 0.15 },
+            '50%': { transform: 'scale(1.2)', opacity: 0.25 },
+            '100%': { transform: 'scale(1)', opacity: 0.15 },
+          },
+        },
+        pb: { xs: 8, sm: 6 }, // Prevent content overlap with fixed footer
+      }}
+    >
       <TopNavBar />
       <Box sx={{ display: 'flex', flex: 1 }}>
         <Sidebar />
-        <Box sx={{ flex: 1, p: 3, ml: '240px' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <Typography variant="body1" color="text.primary">Page 1</Typography>
-              <IconButton sx={{ color: 'primary.main' }}><KeyboardArrowLeft /></IconButton>
-              <Typography variant="body1" color="text.primary">C</Typography>
-              <Typography variant="h6" color="primary.main">Insentinel.com</Typography>
-            </Stack>
-            <Button variant="contained" color="secondary">
+        <Container
+          sx={{
+            flex: 1,
+            p: { xs: 2, sm: 3 },
+            ml: { xs: 0, md: '240px' },
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography
+              variant="h4"
+              sx={{
+                color: '#00bcd4',
+                fontWeight: 'bold',
+                textAlign: { xs: 'center', sm: 'left' },
+                fontSize: { xs: '1.8rem', sm: '2.5rem' },
+                textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)',
+              }}
+            >
+              Admin Management
+            </Typography>
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={handleLogout}
+              sx={{
+                borderRadius: 2,
+                px: 3,
+                '&:hover': { background: '#d32f2f' },
+              }}
+            >
               Log Out
             </Button>
           </Box>
-          <Typography variant="h6" color="text.primary" mb={2}>User Management</Typography>
+
           {usersLoading ? (
             <Box sx={{ textAlign: 'center', mt: 5 }}>
-              <CircularProgress />
+              <CircularProgress sx={{ color: '#00bcd4' }} />
             </Box>
           ) : usersError ? (
-            <Typography color="error">{usersError}</Typography>
+            <Typography color="error" sx={{ mb: 2, background: 'rgba(244, 67, 54, 0.2)', p: 2, borderRadius: 2 }}>
+              {usersError}
+            </Typography>
           ) : (
             <Stack spacing={4}>
-              <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1 }}>
+              <Paper
+                elevation={6}
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  background: 'rgba(31, 44, 62, 0.9)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(0, 188, 212, 0.2)',
+                }}
+              >
                 <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-                  <Typography variant="subtitle1" gutterBottom color="text.primary">
+                  <Typography variant="h6" sx={{ color: '#00bcd4', fontWeight: 'bold' }}>
                     Select Users
                   </Typography>
-                  <Button variant="contained" color="primary" startIcon={<Add />} onClick={openUserAddModal}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<Add />}
+                    onClick={openUserAddModal}
+                    sx={{ borderRadius: 2 }}
+                  >
                     Add User
                   </Button>
                 </Stack>
@@ -520,15 +629,14 @@ export default function AdminTabsPage() {
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
-                    border: 1,
-                    borderColor: '#bdbdbd',
-                    borderRadius: 1,
+                    border: '1px solid rgba(0, 188, 212, 0.5)',
+                    borderRadius: 2,
                     p: 0.5,
                     mb: 2,
-                    bgcolor: '#fff',
+                    background: 'rgba(255, 255, 255, 0.1)',
                   }}
                 >
-                  <IconButton size="small" sx={{ color: '#424242' }}>
+                  <IconButton size="small" sx={{ color: '#00bcd4' }}>
                     <KeyboardArrowLeft />
                   </IconButton>
                   <TextField
@@ -536,49 +644,87 @@ export default function AdminTabsPage() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     variant="standard"
                     InputProps={{ disableUnderline: true }}
-                    sx={{ flex: 1, mx: 1, color: '#424242' }}
+                    sx={{ flex: 1, mx: 1, color: '#fff', input: { color: '#fff' } }}
                     placeholder="Search by email or name"
                   />
-                  <IconButton size="small" onClick={() => setSearchTerm('')} sx={{ color: '#424242' }}>
+                  <IconButton size="small" onClick={() => setSearchTerm('')} sx={{ color: '#00bcd4' }}>
                     <Close />
                   </IconButton>
                 </Box>
-                <Stack spacing={0} sx={{ mb: 2 }}>
-                  {filteredUsers.map(user => (
-                    <ListItem key={user.id} button onClick={() => addToSelected(user)} sx={{ py: 1, '&:hover': { bgcolor: '#e0e0e0' } }}>
-                      <Avatar sx={{ bgcolor: '#757575', mr: 2 }}>
-                        <Person />
-                      </Avatar>
-                      <Typography color="text.primary">{user.full_name}</Typography>
-                    </ListItem>
-                  ))}
+                <Stack spacing={0} sx={{ mb: 2, maxHeight: 200, overflowY: 'auto' }}>
+                  {filteredUsers.length === 0 ? (
+                    <Typography sx={{ color: '#bbb', textAlign: 'center', py: 2 }}>
+                      No users found
+                    </Typography>
+                  ) : (
+                    filteredUsers.map(user => (
+                      <ListItem
+                        key={user.id}
+                        button
+                        onClick={() => addToSelected(user)}
+                        sx={{
+                          py: 1,
+                          '&:hover': { background: 'rgba(0, 188, 212, 0.2)' },
+                          transition: 'background 0.3s',
+                        }}
+                      >
+                        <Avatar sx={{ bgcolor: '#00bcd4', mr: 2 }}>
+                          <Person />
+                        </Avatar>
+                        <Typography sx={{ color: '#fff' }}>{user.full_name}</Typography>
+                      </ListItem>
+                    ))
+                  )}
                 </Stack>
-                <Typography variant="body2" color="text.primary" mb={1}>
+                <Typography variant="body2" sx={{ color: '#00bcd4', mb: 1, fontWeight: 'bold' }}>
                   Selected Users:
                 </Typography>
                 <Stack direction="row" spacing={1} flexWrap="wrap" mb={2}>
-                  {selectedUsers.map(user => (
-                    <Chip
-                      key={user.id}
-                      label={user.full_name}
-                      onDelete={() => removeSelected(user)}
-                      variant="outlined"
-                      sx={{ borderColor: '#757575', color: '#424242' }}
-                    />
-                  ))}
+                  {selectedUsers.length === 0 ? (
+                    <Typography sx={{ color: '#bbb' }}>No users selected</Typography>
+                  ) : (
+                    selectedUsers.map(user => (
+                      <Chip
+                        key={user.id}
+                        label={user.full_name}
+                        onDelete={() => removeSelected(user)}
+                        sx={{
+                          borderColor: '#00bcd4',
+                          color: '#fff',
+                          background: 'rgba(0, 188, 212, 0.2)',
+                          '&:hover': { background: 'rgba(0, 188, 212, 0.3)' },
+                        }}
+                      />
+                    ))
+                  )}
                 </Stack>
-              </Box>
-              <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1 }}>
-                <Typography variant="subtitle1" gutterBottom color="text.primary">
+              </Paper>
+
+              <Paper
+                elevation={6}
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  background: 'rgba(31, 44, 62, 0.9)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(0, 188, 212, 0.2)',
+                }}
+              >
+                <Typography variant="h6" sx={{ color: '#00bcd4', fontWeight: 'bold', mb: 2 }}>
                   Update User Settings
-                  
                 </Typography>
                 <Select
                   value={updateSetting}
                   onChange={(e) => setUpdateSetting(e.target.value as string)}
                   displayEmpty
                   fullWidth
-                  sx={{ mb: 2, color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                  sx={{
+                    mb: 2,
+                    color: '#fff',
+                    '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#00bcd4' },
+                    '.MuiSvgIcon-root': { color: '#fff' },
+                  }}
                 >
                   <MenuItem value="" disabled>
                     Choose Setting
@@ -594,7 +740,12 @@ export default function AdminTabsPage() {
                         value={updateValue as string}
                         onChange={(e) => setUpdateValue(e.target.value as string)}
                         fullWidth
-                        sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                        sx={{
+                          color: '#fff',
+                          '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#00bcd4' },
+                          '.MuiSvgIcon-root': { color: '#fff' },
+                        }}
                       >
                         <MenuItem value="IT">IT</MenuItem>
                         <MenuItem value="Finance">Finance</MenuItem>
@@ -605,7 +756,12 @@ export default function AdminTabsPage() {
                         value={updateValue as string}
                         onChange={(e) => setUpdateValue(e.target.value as string)}
                         fullWidth
-                        sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                        sx={{
+                          color: '#fff',
+                          '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#00bcd4' },
+                          '.MuiSvgIcon-root': { color: '#fff' },
+                        }}
                       >
                         <MenuItem value="intern">Intern</MenuItem>
                         <MenuItem value="Regular Staff">Regular Staff</MenuItem>
@@ -617,7 +773,7 @@ export default function AdminTabsPage() {
                       <FormControlLabel
                         control={<Checkbox checked={!!updateValue} onChange={(e) => setUpdateValue(e.target.checked)} />}
                         label="Simulate Insider Threat"
-                        sx={{ color: '#424242' }}
+                        sx={{ color: '#fff' }}
                       />
                     )}
                   </Box>
@@ -627,94 +783,156 @@ export default function AdminTabsPage() {
                   color="primary"
                   onClick={handleApplySettings}
                   disabled={saving || selectedUsers.length === 0 || !updateSetting || !updateValue}
+                  sx={{ borderRadius: 2 }}
                 >
                   Apply Settings
                 </Button>
-              </Box>
-              <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1 }}>
-                <Typography variant="h6" gutterBottom color="text.primary">
+              </Paper>
+
+              <Paper
+                elevation={6}
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  background: 'rgba(31, 44, 62, 0.9)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(0, 188, 212, 0.2)',
+                }}
+              >
+                <Typography variant="h6" sx={{ color: '#00bcd4', fontWeight: 'bold', mb: 2 }}>
                   Users Data
                 </Typography>
-                <TableContainer component={Paper} sx={{ maxHeight: 300, mb: 2 }}>
+                <TableContainer sx={{ maxHeight: 300, borderRadius: 2, overflow: 'hidden' }}>
                   <Table stickyHeader size="small">
                     <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242' }}>Email</TableCell>
-                        <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242' }}>Full Name</TableCell>
-                        <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242' }}>Department</TableCell>
-                        <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242' }}>Group</TableCell>
-                        <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242' }}>Simulated Threat</TableCell>
-                        <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242', textAlign: 'right' }}>Actions</TableCell>
+                      <TableRow sx={{ bgcolor: '#00bcd4' }}>
+                        <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Email</TableCell>
+                        <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Full Name</TableCell>
+                        <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Department</TableCell>
+                        <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Group</TableCell>
+                        <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Simulated Threat</TableCell>
+                        <TableCell sx={{ color: '#fff', fontWeight: 'bold', textAlign: 'right' }}>Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filteredUsers.length === 0 && (
+                      {filteredUsers.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} align="center" sx={{ color: '#424242' }}>
+                          <TableCell colSpan={6} align="center" sx={{ color: '#bbb' }}>
                             No users found
                           </TableCell>
                         </TableRow>
+                      ) : (
+                        filteredUsers.map(user => (
+                          <TableRow
+                            key={user.id}
+                            hover
+                            sx={{
+                              '&:hover': { background: 'rgba(0, 188, 212, 0.2)' },
+                              transition: 'background 0.3s',
+                            }}
+                          >
+                            <TableCell sx={{ color: '#fff' }}>{user.email}</TableCell>
+                            <TableCell sx={{ color: '#fff' }}>{user.full_name}</TableCell>
+                            <TableCell sx={{ color: '#fff' }}>{user.department || '-'}</TableCell>
+                            <TableCell sx={{ color: '#fff' }}>{user.group || '-'}</TableCell>
+                            <TableCell sx={{ color: '#fff' }}>{user.is_simulated_threat ? 'Yes' : 'No'}</TableCell>
+                            <TableCell sx={{ textAlign: 'right' }}>
+                              <IconButton
+                                color="primary"
+                                onClick={() => openUserEditModal(user)}
+                                size="small"
+                                aria-label="edit user"
+                                sx={{ '&:hover': { background: 'rgba(0, 188, 212, 0.3)' } }}
+                              >
+                                <Edit />
+                              </IconButton>
+                              <IconButton
+                                color="error"
+                                onClick={() => handleDeleteUser(user)}
+                                size="small"
+                                aria-label="delete user"
+                                sx={{ '&:hover': { background: 'rgba(244, 67, 54, 0.3)' } }}
+                              >
+                                <Delete />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        ))
                       )}
-                      {filteredUsers.map(user => (
-                        <TableRow key={user.id} hover sx={{ '&:hover': { bgcolor: '#e0e0e0' } }}>
-                          <TableCell sx={{ color: '#424242' }}>{user.email}</TableCell>
-                          <TableCell sx={{ color: '#424242' }}>{user.full_name}</TableCell>
-                          <TableCell sx={{ color: '#424242' }}>{user.department || '-'}</TableCell>
-                          <TableCell sx={{ color: '#424242' }}>{user.group || '-'}</TableCell>
-                          <TableCell sx={{ color: '#424242' }}>{user.is_simulated_threat ? 'Yes' : 'No'}</TableCell>
-                          <TableCell sx={{ color: '#424242', textAlign: 'right' }}>
-                            <IconButton color="primary" onClick={() => openUserEditModal(user)} size="small" aria-label="edit user">
-                              <Edit />
-                            </IconButton>
-                            <IconButton color="error" onClick={() => handleDeleteUser(user)} size="small" aria-label="delete user">
-                              <Delete />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
-              </Box>
-              <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1 }}>
-                <Typography variant="h6" gutterBottom color="text.primary">
+              </Paper>
+
+              <Paper
+                elevation={6}
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  background: 'rgba(31, 44, 62, 0.9)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(0, 188, 212, 0.2)',
+                }}
+              >
+                <Typography variant="h6" sx={{ color: '#00bcd4', fontWeight: 'bold', mb: 2 }}>
                   Files and Folders
                 </Typography>
                 {filesLoading ? (
                   <Box sx={{ textAlign: 'center', mt: 5 }}>
-                    <CircularProgress />
+                    <CircularProgress sx={{ color: '#00bcd4' }} />
                   </Box>
                 ) : filesError ? (
-                  <Typography color="error">{filesError}</Typography>
+                  <Typography color="error" sx={{ mb: 2, background: 'rgba(244, 67, 54, 0.2)', p: 2, borderRadius: 2 }}>
+                    {filesError}
+                  </Typography>
                 ) : Object.keys(resourcesByDepartment).length === 0 ? (
-                  <Typography color="text.primary">No files available.</Typography>
+                  <Typography sx={{ color: '#bbb' }}>No files available.</Typography>
                 ) : (
                   Object.entries(resourcesByDepartment).map(([department, files]) => (
                     <Box key={department} mb={3}>
-                      <Typography variant="subtitle1" gutterBottom color="text.primary">
+                      <Typography variant="subtitle1" sx={{ color: '#00bcd4', fontWeight: 'bold', mb: 2 }}>
                         Department: {department}
                       </Typography>
-                      <TableContainer component={Paper}>
+                      <TableContainer sx={{ borderRadius: 2, overflow: 'hidden' }}>
                         <Table size="small" stickyHeader>
                           <TableHead>
-                            <TableRow>
-                              <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242' }}>Name</TableCell>
-                              <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242' }}>Type</TableCell>
-                              <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242' }}>Access Level</TableCell>
-                              <TableCell sx={{ bgcolor: '#e0e0e0', color: '#424242', textAlign: 'right' }}>Actions</TableCell>
+                            <TableRow sx={{ bgcolor: '#00bcd4' }}>
+                              <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Name</TableCell>
+                              <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Type</TableCell>
+                              <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Access Level</TableCell>
+                              <TableCell sx={{ color: '#fff', fontWeight: 'bold', textAlign: 'right' }}>Actions</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
                             {files.map(file => (
-                              <TableRow key={file.id} hover sx={{ '&:hover': { bgcolor: '#e0e0e0' } }}>
-                                <TableCell sx={{ color: '#424242' }}>{file.name}</TableCell>
-                                <TableCell sx={{ color: '#424242' }}>{file.is_folder ? 'Folder' : 'File'}</TableCell>
-                                <TableCell sx={{ color: '#424242' }}>{file.access_level}</TableCell>
-                                <TableCell sx={{ color: '#424242', textAlign: 'right' }}>
-                                  <IconButton color="primary" onClick={() => openEditFileModal(file)} size="small" aria-label="edit file">
+                              <TableRow
+                                key={file.id}
+                                hover
+                                sx={{
+                                  '&:hover': { background: 'rgba(0, 188, 212, 0.2)' },
+                                  transition: 'background 0.3s',
+                                }}
+                              >
+                                <TableCell sx={{ color: '#fff' }}>{file.name}</TableCell>
+                                <TableCell sx={{ color: '#fff' }}>{file.is_folder ? 'Folder' : 'File'}</TableCell>
+                                <TableCell sx={{ color: '#fff' }}>{file.access_level}</TableCell>
+                                <TableCell sx={{ textAlign: 'right' }}>
+                                  <IconButton
+                                    color="primary"
+                                    onClick={() => openEditFileModal(file)}
+                                    size="small"
+                                    aria-label="edit file"
+                                    sx={{ '&:hover': { background: 'rgba(0, 188, 212, 0.3)' } }}
+                                  >
                                     <Edit />
                                   </IconButton>
-                                  <IconButton color="error" onClick={() => handleDeleteFile(file)} size="small" aria-label="delete file">
+                                  <IconButton
+                                    color="error"
+                                    onClick={() => handleDeleteFile(file)}
+                                    size="small"
+                                    aria-label="delete file"
+                                    sx={{ '&:hover': { background: 'rgba(244, 67, 54, 0.3)' } }}
+                                  >
                                     <Delete />
                                   </IconButton>
                                 </TableCell>
@@ -723,19 +941,40 @@ export default function AdminTabsPage() {
                           </TableBody>
                         </Table>
                       </TableContainer>
-                      <Button variant="contained" color="primary" onClick={() => openAddFileModal(department)} sx={{ mt: 2 }}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={() => openAddFileModal(department)}
+                        sx={{ mt: 2, borderRadius: 2 }}
+                      >
                         Add Resource
                       </Button>
                     </Box>
                   ))
                 )}
-              </Box>
+              </Paper>
             </Stack>
           )}
 
           {/* User Modal */}
-          <Dialog open={userModalOpen} onClose={closeUserModal} maxWidth="sm" fullWidth>
-            <DialogTitle>{userModalMode === 'add' ? 'Add New User' : `Edit User: ${editingUser?.email}`}</DialogTitle>
+          <Dialog
+            open={userModalOpen}
+            onClose={closeUserModal}
+            maxWidth="sm"
+            fullWidth
+            sx={{
+              '& .MuiDialog-paper': {
+                background: 'rgba(31, 44, 62, 0.95)',
+                backdropFilter: 'blur(10px)',
+                borderRadius: 3,
+                border: '1px solid rgba(0, 188, 212, 0.3)',
+                color: '#fff',
+              },
+            }}
+          >
+            <DialogTitle sx={{ color: '#00bcd4', fontWeight: 'bold' }}>
+              {userModalMode === 'add' ? 'Add New User' : `Edit User: ${editingUser?.email}`}
+            </DialogTitle>
             <DialogContent dividers>
               <Stack spacing={2} mt={1}>
                 <TextField
@@ -746,7 +985,15 @@ export default function AdminTabsPage() {
                   value={userFormData.email}
                   onChange={handleUserInputChange}
                   required
-                  sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: '#fff',
+                      '& fieldset': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                      '&:hover fieldset': { borderColor: '#00bcd4' },
+                      '&.Mui-focused fieldset': { borderColor: '#00bcd4' },
+                    },
+                    '& .MuiInputLabel-root': { color: '#bbb', '&.Mui-focused': { color: '#00bcd4' } },
+                  }}
                 />
                 <TextField
                   label="Full Name"
@@ -755,7 +1002,15 @@ export default function AdminTabsPage() {
                   value={userFormData.full_name}
                   onChange={handleUserInputChange}
                   required
-                  sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: '#fff',
+                      '& fieldset': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                      '&:hover fieldset': { borderColor: '#00bcd4' },
+                      '&.Mui-focused fieldset': { borderColor: '#00bcd4' },
+                    },
+                    '& .MuiInputLabel-root': { color: '#bbb', '&.Mui-focused': { color: '#00bcd4' } },
+                  }}
                 />
                 <Select
                   label="Department"
@@ -764,7 +1019,12 @@ export default function AdminTabsPage() {
                   onChange={handleUserInputChange as (e: SelectChangeEvent<string>) => void}
                   fullWidth
                   required
-                  sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                  sx={{
+                    color: '#fff',
+                    '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#00bcd4' },
+                    '.MuiSvgIcon-root': { color: '#fff' },
+                  }}
                 >
                   <MenuItem value="">Select Department</MenuItem>
                   <MenuItem value="IT">IT</MenuItem>
@@ -777,7 +1037,12 @@ export default function AdminTabsPage() {
                   onChange={handleUserInputChange as (e: SelectChangeEvent<string>) => void}
                   fullWidth
                   required
-                  sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                  sx={{
+                    color: '#fff',
+                    '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#00bcd4' },
+                    '.MuiSvgIcon-root': { color: '#fff' },
+                  }}
                 >
                   <MenuItem value="">Select Group</MenuItem>
                   <MenuItem value="intern">Intern</MenuItem>
@@ -786,7 +1051,7 @@ export default function AdminTabsPage() {
                   <MenuItem value="Managers">Managers</MenuItem>
                 </Select>
                 {userModalMode === 'edit' && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                  <Typography variant="caption" sx={{ color: '#bbb', mt: -1 }}>
                     Leave password blank if you don't want to change it
                   </Typography>
                 )}
@@ -798,29 +1063,63 @@ export default function AdminTabsPage() {
                   value={userFormData.password}
                   onChange={handleUserInputChange}
                   required={userModalMode === 'add'}
-                  sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: '#fff',
+                      '& fieldset': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                      '&:hover fieldset': { borderColor: '#00bcd4' },
+                      '&.Mui-focused fieldset': { borderColor: '#00bcd4' },
+                    },
+                    '& .MuiInputLabel-root': { color: '#bbb', '&.Mui-focused': { color: '#00bcd4' } },
+                  }}
                 />
                 <FormControlLabel
                   control={<Checkbox checked={userFormData.is_simulated_threat} onChange={handleUserCheckboxChange} name="is_simulated_threat" />}
                   label="Simulate Insider Threat"
-                  sx={{ color: '#424242' }}
+                  sx={{ color: '#fff' }}
                 />
               </Stack>
-              {usersError && <Typography color="error" mt={2} variant="body2">{usersError}</Typography>}
+              {usersError && (
+                <Typography color="error" mt={2} variant="body2" sx={{ background: 'rgba(244, 67, 54, 0.2)', p: 1, borderRadius: 2 }}>
+                  {usersError}
+                </Typography>
+              )}
             </DialogContent>
-            <DialogActions>
-              <Button onClick={closeUserModal} disabled={saving} sx={{ color: '#424242' }}>
+            <DialogActions sx={{ borderTop: '1px solid rgba(0, 188, 212, 0.2)' }}>
+              <Button onClick={closeUserModal} disabled={saving} sx={{ color: '#bbb' }}>
                 Cancel
               </Button>
-              <Button onClick={handleSaveUser} variant="contained" color="primary" disabled={saving}>
+              <Button
+                onClick={handleSaveUser}
+                variant="contained"
+                color="primary"
+                disabled={saving}
+                sx={{ borderRadius: 2 }}
+              >
                 {saving ? <CircularProgress size={20} color="inherit" /> : 'Save'}
               </Button>
             </DialogActions>
           </Dialog>
 
           {/* File Modal */}
-          <Dialog open={fileModalOpen} onClose={closeFileModal} maxWidth="sm" fullWidth>
-            <DialogTitle>{fileModalMode === 'add' ? 'Add New Resource' : `Edit Resource: ${editingResource?.name}`}</DialogTitle>
+          <Dialog
+            open={fileModalOpen}
+            onClose={closeFileModal}
+            maxWidth="sm"
+            fullWidth
+            sx={{
+              '& .MuiDialog-paper': {
+                background: 'rgba(31, 44, 62, 0.95)',
+                backdropFilter: 'blur(10px)',
+                borderRadius: 3,
+                border: '1px solid rgba(0, 188, 212, 0.3)',
+                color: '#fff',
+              },
+            }}
+          >
+            <DialogTitle sx={{ color: '#00bcd4', fontWeight: 'bold' }}>
+              {fileModalMode === 'add' ? 'Add New Resource' : `Edit Resource: ${editingResource?.name}`}
+            </DialogTitle>
             <DialogContent dividers>
               <Stack spacing={2} mt={1}>
                 <TextField
@@ -830,7 +1129,15 @@ export default function AdminTabsPage() {
                   value={fileFormData.name}
                   onChange={handleFileInputChange as (e: React.ChangeEvent<HTMLInputElement>) => void}
                   required
-                  sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: '#fff',
+                      '& fieldset': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                      '&:hover fieldset': { borderColor: '#00bcd4' },
+                      '&.Mui-focused fieldset': { borderColor: '#00bcd4' },
+                    },
+                    '& .MuiInputLabel-root': { color: '#bbb', '&.Mui-focused': { color: '#00bcd4' } },
+                  }}
                 />
                 <TextField
                   label="Department"
@@ -838,7 +1145,13 @@ export default function AdminTabsPage() {
                   fullWidth
                   value={fileFormData.department}
                   disabled
-                  sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: '#fff',
+                      '& fieldset': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                    },
+                    '& .MuiInputLabel-root': { color: '#bbb' },
+                  }}
                 />
                 <Select
                   label="Access Level"
@@ -847,7 +1160,12 @@ export default function AdminTabsPage() {
                   onChange={handleFileInputChange as (e: SelectChangeEvent<string>) => void}
                   fullWidth
                   required
-                  sx={{ color: '#424242', '.MuiOutlinedInput-notchedOutline': { borderColor: '#bdbdbd' } }}
+                  sx={{
+                    color: '#fff',
+                    '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#00bcd4' },
+                    '.MuiSvgIcon-root': { color: '#fff' },
+                  }}
                 >
                   <MenuItem value="">Select Access Level</MenuItem>
                   <MenuItem value="read">Read</MenuItem>
@@ -857,21 +1175,31 @@ export default function AdminTabsPage() {
                 <FormControlLabel
                   control={<Checkbox checked={fileFormData.is_folder} onChange={handleFileCheckboxChange} name="is_folder" />}
                   label="Is Folder"
-                  sx={{ color: '#424242' }}
+                  sx={{ color: '#fff' }}
                 />
               </Stack>
-              {filesError && <Typography color="error" mt={2} variant="body2">{filesError}</Typography>}
+              {filesError && (
+                <Typography color="error" mt={2} variant="body2" sx={{ background: 'rgba(244, 67, 54, 0.2)', p: 1, borderRadius: 2 }}>
+                  {filesError}
+                </Typography>
+              )}
             </DialogContent>
-            <DialogActions>
-              <Button onClick={closeFileModal} disabled={saving} sx={{ color: '#424242' }}>
+            <DialogActions sx={{ borderTop: '1px solid rgba(0, 188, 212, 0.2)' }}>
+              <Button onClick={closeFileModal} disabled={saving} sx={{ color: '#bbb' }}>
                 Cancel
               </Button>
-              <Button onClick={fileModalMode === 'add' ? handleAddFile : handleUpdateFile} variant="contained" color="primary" disabled={saving}>
+              <Button
+                onClick={fileModalMode === 'add' ? handleAddFile : handleUpdateFile}
+                variant="contained"
+                color="primary"
+                disabled={saving}
+                sx={{ borderRadius: 2 }}
+              >
                 {saving ? <CircularProgress size={20} color="inherit" /> : fileModalMode === 'add' ? 'Add' : 'Save'}
               </Button>
             </DialogActions>
           </Dialog>
-        </Box>
+        </Container>
       </Box>
       <FooterSection />
     </Box>

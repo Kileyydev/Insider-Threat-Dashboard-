@@ -25,6 +25,7 @@ import {
   CardContent,
   Divider,
   Stack,
+  Container,
 } from '@mui/material';
 import { CheckCircleOutline } from '@mui/icons-material';
 import {
@@ -41,11 +42,10 @@ import {
   CartesianGrid,
 } from 'recharts';
 import TopNavBar from '@/app/components/TopNavBar';
-import FooterSection from '@/app/components/FooterSection';
 import Sidebar from '../components/SideBar';
 import { createAlertsSocket } from '@/lib/alertsSockets';
 import useSWR from 'swr';
-import { apiGet } from '@/lib/api'; 
+import { apiGet } from '@/lib/api';
 
 const API_BASE =
   typeof window !== 'undefined'
@@ -54,13 +54,40 @@ const API_BASE =
 
 const theme = createTheme({
   palette: {
-    mode: 'light',
-    primary: { main: '#1976d2' },
-    secondary: { main: '#f44336' },
-    background: { default: '#ffffff', paper: '#f5f5f5' },
-    text: { primary: '#333333', secondary: '#666666' },
+    mode: 'dark',
+    primary: { main: '#00bcd4' }, // Cyan for primary
+    secondary: { main: '#f44336' }, // Red for secondary
+    background: { default: '#0a101f', paper: 'rgba(31, 44, 62, 0.9)' },
+    text: { primary: '#ffffff', secondary: '#bbbbbb' },
   },
-  typography: { fontFamily: '"Arial","Roboto",sans-serif' },
+  typography: { fontFamily: '"Roboto","Arial",sans-serif' },
+  components: {
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: 12,
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(0, 188, 212, 0.2)',
+        },
+      },
+    },
+    MuiTable: {
+      styleOverrides: {
+        root: {
+          background: 'rgba(31, 44, 62, 0.9)',
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+          textTransform: 'none',
+          fontWeight: 500,
+        },
+      },
+    },
+  },
 });
 
 interface AuditLog {
@@ -79,48 +106,67 @@ interface AlertItem {
   timestamp: string;
 }
 
-export default function InsiderThreatDashboard() {
+// FooterSection component (replace with your actual FooterSection if different)
+function FooterSection() {
+  return (
+    <Box
+      component="footer"
+      sx={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        width: '100%',
+        background: 'rgba(15, 32, 39, 0.95)',
+        backdropFilter: 'blur(8px)',
+        color: '#fff',
+        py: 2,
+        textAlign: 'center',
+        zIndex: 1200,
+        borderTop: '1px solid rgba(0, 188, 212, 0.2)',
+      }}
+    >
+      <Container>
+        <Typography variant="body2" sx={{ color: '#bbb', fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+          © {new Date().getFullYear()} Insider Threat Dashboard. All rights reserved.
+        </Typography>
+      </Container>
+    </Box>
+  );
+}
 
+export default function InsiderThreatDashboard() {
   const { data: alertsData, mutate } = useSWR('/monitoring/alerts/', apiGet, { refreshInterval: 0 });
 
   useEffect(() => {
     const ws = createAlertsSocket((alert) => {
-      // show notification + prepend to SWR cache
       mutate((existing: any[] = []) => [alert, ...existing], false);
     });
     return () => ws && ws.close();
   }, [mutate]);
 
   const [tabIndex, setTabIndex] = useState(0);
-
-  // Logs state
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState('');
-
-  // Alerts & summary
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [alertsError, setAlertsError] = useState('');
-
-  // Filters
   const [logSearch, setLogSearch] = useState('');
-  const [alertFilterSeverity, setAlertFilterSeverity] = useState<
-    'all' | 'low' | 'medium' | 'high'
-  >('all');
-
-  const token =
-    typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-
-  // Current date/time string, client-only to avoid hydration errors
+  const [alertFilterSeverity, setAlertFilterSeverity] = useState<'all' | 'low' | 'medium' | 'high'>('all');
+  const [token, setToken] = useState<string | null>(null);
   const [currentDateTimeStr, setCurrentDateTimeStr] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setToken(localStorage.getItem('accessToken'));
+    }
+  }, []);
 
   useEffect(() => {
     if (token) {
       fetchLogs();
       fetchAlerts();
     }
-    // Update current date and time every minute
     const updateDateTime = () => {
       setCurrentDateTimeStr(
         new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi', hour12: true })
@@ -184,20 +230,17 @@ export default function InsiderThreatDashboard() {
     }
   }
 
-  // Filtered logs by search term
   const filteredLogs = logs.filter(
     (log) =>
       log.user.toLowerCase().includes(logSearch.toLowerCase()) ||
       log.action.toLowerCase().includes(logSearch.toLowerCase())
   );
 
-  // Filtered alerts by severity
   const filteredAlerts =
     alertFilterSeverity === 'all'
       ? alerts
       : alerts.filter((a) => a.severity === alertFilterSeverity);
 
-  // Alerts summary data for charts
   const severityCounts = alerts.reduce((acc, alert) => {
     acc[alert.severity] = (acc[alert.severity] || 0) + 1;
     return acc;
@@ -220,7 +263,6 @@ export default function InsiderThreatDashboard() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  // Audit logs summaries
   const actionCounts = logs.reduce((acc, log) => {
     acc[log.action] = (acc[log.action] || 0) + 1;
     return acc;
@@ -243,25 +285,86 @@ export default function InsiderThreatDashboard() {
 
   return (
     <ThemeProvider theme={theme}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          background: 'linear-gradient(135deg, #0a101f 0%, #1f2c3e 100%)',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+          overflow: 'hidden',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: '-20%',
+            left: '-20%',
+            width: '140%',
+            height: '140%',
+            background: 'radial-gradient(circle, rgba(0, 188, 212, 0.15) 0%, transparent 70%)',
+            animation: 'pulse 15s ease-in-out infinite',
+            zIndex: 0,
+            '@keyframes pulse': {
+              '0%': { transform: 'scale(1)', opacity: 0.15 },
+              '50%': { transform: 'scale(1.2)', opacity: 0.25 },
+              '100%': { transform: 'scale(1)', opacity: 0.15 },
+            },
+          },
+          pb: { xs: 8, sm: 6 }, // Prevent content overlap with fixed footer
+        }}
+      >
         <TopNavBar />
         <Box sx={{ display: 'flex', flex: 1 }}>
           <Sidebar />
-          <Box sx={{ flex: 1, p: 3, ml: '240px' }}>
-            <Typography variant="h6" color="text.secondary" gutterBottom>
+          <Container
+            sx={{
+              flex: 1,
+              p: { xs: 2, sm: 3 },
+              ml: { xs: 0, md: '240px' },
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            <Typography
+              variant="h6"
+              color="text.secondary"
+              gutterBottom
+              sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}
+            >
               Last Updated: {currentDateTimeStr || 'Loading...'}
             </Typography>
-            <Typography variant="h4" gutterBottom color="primary">
-              Insider Threat Detection and Prevention Dashboard
+            <Typography
+              variant="h4"
+              gutterBottom
+              sx={{
+                color: 'primary.main',
+                fontWeight: 'bold',
+                textAlign: { xs: 'center', sm: 'left' },
+                fontSize: { xs: '1.8rem', sm: '2.5rem' },
+                textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)',
+              }}
+            >
+              Insider Threat Detection Dashboard
             </Typography>
-            <Divider sx={{ mb: 3 }} />
+            <Divider sx={{ mb: 3, borderColor: 'rgba(0, 188, 212, 0.2)' }} />
 
             {/* Tabs */}
             <Tabs
               value={tabIndex}
               onChange={(e, val) => setTabIndex(val)}
               aria-label="dashboard tabs"
-              sx={{ mb: 3 }}
+              sx={{
+                mb: 3,
+                '& .MuiTab-root': {
+                  color: '#bbb',
+                  fontWeight: 500,
+                  '&.Mui-selected': {
+                    color: 'primary.main',
+                  },
+                },
+                '& .MuiTabs-indicator': {
+                  backgroundColor: 'primary.main',
+                },
+              }}
             >
               <Tab label="Audit Logs" />
               <Tab label="Alerts & Summary" />
@@ -275,33 +378,69 @@ export default function InsiderThreatDashboard() {
                   fullWidth
                   value={logSearch}
                   onChange={(e) => setLogSearch(e.target.value)}
-                  sx={{ mb: 2 }}
+                  sx={{
+                    mb: 3,
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      color: '#fff',
+                      '& fieldset': { borderColor: 'rgba(0, 188, 212, 0.5)' },
+                      '&:hover fieldset': { borderColor: 'primary.main' },
+                      '&.Mui-focused fieldset': { borderColor: 'primary.main' },
+                    },
+                    '& .MuiInputLabel-root': {
+                      color: '#bbb',
+                      '&.Mui-focused': { color: 'primary.main' },
+                    },
+                    '& input': { color: '#fff' },
+                  }}
                 />
-
                 {logsLoading ? (
-                  <CircularProgress sx={{ display: 'block', mx: 'auto' }} />
+                  <CircularProgress sx={{ display: 'block', mx: 'auto', color: 'primary.main' }} />
                 ) : logsError ? (
-                  <Alert severity="error">{logsError}</Alert>
+                  <Alert severity="error" sx={{ mb: 2, background: 'rgba(244, 67, 54, 0.2)', color: '#fff' }}>
+                    {logsError}
+                  </Alert>
                 ) : (
-                  <TableContainer component={Paper} elevation={3}>
+                  <TableContainer
+                    component={Paper}
+                    elevation={6}
+                    sx={{ borderRadius: 3, overflow: 'hidden' }}
+                  >
                     <Table>
                       <TableHead>
-                        <TableRow sx={{ bgcolor: 'primary.main', color: 'white' }}>
-                          <TableCell sx={{ color: 'white' }}>User</TableCell>
-                          <TableCell sx={{ color: 'white' }}>Action</TableCell>
-                          <TableCell sx={{ color: 'white' }}>Timestamp</TableCell>
+                        <TableRow sx={{ bgcolor: 'primary.main' }}>
+                          <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>User</TableCell>
+                          <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Action</TableCell>
+                          <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Timestamp</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {filteredLogs.map((log, i) => (
-                          <TableRow key={i}>
-                            <TableCell>{log.user}</TableCell>
-                            <TableCell>{log.action}</TableCell>
-                            <TableCell>
-                              {new Date(log.timestamp).toLocaleString()}
+                        {filteredLogs.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={3} align="center" sx={{ color: '#bbb' }}>
+                              No logs found
                             </TableCell>
                           </TableRow>
-                        ))}
+                        ) : (
+                          filteredLogs.map((log, i) => (
+                            <TableRow
+                              key={i}
+                              sx={{
+                                '&:hover': {
+                                  background: 'rgba(0, 188, 212, 0.2)',
+                                  transition: 'background 0.3s',
+                                },
+                              }}
+                            >
+                              <TableCell sx={{ color: '#fff' }}>{log.user}</TableCell>
+                              <TableCell sx={{ color: '#fff' }}>{log.action}</TableCell>
+                              <TableCell sx={{ color: '#fff' }}>
+                                {new Date(log.timestamp).toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
                       </TableBody>
                     </Table>
                   </TableContainer>
@@ -314,104 +453,128 @@ export default function InsiderThreatDashboard() {
               <Grid container spacing={3}>
                 {/* Alerts Table */}
                 <Grid item xs={12}>
-                  <Card elevation={3}>
+                  <Card elevation={6}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom color="primary">
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        sx={{ color: 'primary.main', fontWeight: 'bold' }}
+                      >
                         Active Alerts
                       </Typography>
-                      <Stack direction="row" spacing={1} mb={2}>
-                        <Button
-                          variant={alertFilterSeverity === 'all' ? 'contained' : 'outlined'}
-                          onClick={() => setAlertFilterSeverity('all')}
-                        >
-                          All
-                        </Button>
-                        <Button
-                          variant={alertFilterSeverity === 'low' ? 'contained' : 'outlined'}
-                          onClick={() => setAlertFilterSeverity('low')}
-                          sx={{
-                            bgcolor: alertFilterSeverity === 'low' ? '#00C49F' : undefined,
-                            color: alertFilterSeverity === 'low' ? 'white' : undefined,
-                          }}
-                        >
-                          Low
-                        </Button>
-                        <Button
-                          variant={alertFilterSeverity === 'medium' ? 'contained' : 'outlined'}
-                          onClick={() => setAlertFilterSeverity('medium')}
-                          sx={{
-                            bgcolor: alertFilterSeverity === 'medium' ? '#FFBB28' : undefined,
-                            color: alertFilterSeverity === 'medium' ? 'black' : undefined,
-                          }}
-                        >
-                          Medium
-                        </Button>
-                        <Button
-                          variant={alertFilterSeverity === 'high' ? 'contained' : 'outlined'}
-                          onClick={() => setAlertFilterSeverity('high')}
-                          sx={{
-                            bgcolor: alertFilterSeverity === 'high' ? '#FF4C4C' : undefined,
-                            color: alertFilterSeverity === 'high' ? 'white' : undefined,
-                          }}
-                        >
-                          High
-                        </Button>
+                      <Stack direction="row" spacing={1} mb={3}>
+                        {['all', 'low', 'medium', 'high'].map((severity) => (
+                          <Button
+                            key={severity}
+                            variant={alertFilterSeverity === severity ? 'contained' : 'outlined'}
+                            onClick={() => setAlertFilterSeverity(severity as any)}
+                            sx={{
+                              background:
+                                alertFilterSeverity === severity
+                                  ? severity === 'low'
+                                    ? '#00C49F'
+                                    : severity === 'medium'
+                                    ? '#FFBB28'
+                                    : severity === 'high'
+                                    ? '#FF4C4C'
+                                    : 'primary.main'
+                                  : 'transparent',
+                              color:
+                                alertFilterSeverity === severity
+                                  ? severity === 'medium'
+                                    ? '#000'
+                                    : '#fff'
+                                  : '#bbb',
+                              borderColor: 'rgba(0, 188, 212, 0.5)',
+                              '&:hover': {
+                                background:
+                                  alertFilterSeverity === severity
+                                    ? undefined
+                                    : 'rgba(0, 188, 212, 0.2)',
+                                borderColor: 'primary.main',
+                              },
+                            }}
+                          >
+                            {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                          </Button>
+                        ))}
                       </Stack>
-
                       {alertsLoading ? (
-                        <CircularProgress sx={{ display: 'block', mx: 'auto' }} />
+                        <CircularProgress sx={{ display: 'block', mx: 'auto', color: 'primary.main' }} />
                       ) : alertsError ? (
-                        <Alert severity="error">{alertsError}</Alert>
+                        <Alert severity="error" sx={{ mb: 2, background: 'rgba(244, 67, 54, 0.2)', color: '#fff' }}>
+                          {alertsError}
+                        </Alert>
                       ) : (
-                        <TableContainer>
+                        <TableContainer sx={{ borderRadius: 3, overflow: 'hidden' }}>
                           <Table>
                             <TableHead>
-                              <TableRow sx={{ bgcolor: 'primary.main', color: 'white' }}>
-                                <TableCell sx={{ color: 'white' }}>User</TableCell>
-                                <TableCell sx={{ color: 'white' }}>Action</TableCell>
-                                <TableCell sx={{ color: 'white' }}>Description</TableCell>
-                                <TableCell sx={{ color: 'white' }}>Severity</TableCell>
-                                <TableCell sx={{ color: 'white' }}>Timestamp</TableCell>
-                                <TableCell sx={{ color: 'white' }}>Clear</TableCell>
+                              <TableRow sx={{ bgcolor: 'primary.main' }}>
+                                <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>User</TableCell>
+                                <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Action</TableCell>
+                                <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Description</TableCell>
+                                <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Severity</TableCell>
+                                <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Timestamp</TableCell>
+                                <TableCell sx={{ color: '#fff', fontWeight: 'bold' }}>Clear</TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {filteredAlerts.map((alert) => (
-                                <TableRow
-                                  key={alert.id}
-                                  sx={{ bgcolor: alert.cleared ? '#e0f7fa' : undefined }}
-                                >
-                                  <TableCell>{alert.user}</TableCell>
-                                  <TableCell>{alert.action}</TableCell>
-                                  <TableCell>{alert.description}</TableCell>
-                                  <TableCell
-                                    sx={{
-                                      color:
-                                        alert.severity === 'high'
-                                          ? 'secondary.main'
-                                          : alert.severity === 'medium'
-                                          ? '#FFBB28'
-                                          : '#00C49F',
-                                      fontWeight: 'bold',
-                                    }}
-                                  >
-                                    {alert.severity.toUpperCase()}
-                                  </TableCell>
-                                  <TableCell>
-                                    {new Date(alert.timestamp).toLocaleString()}
-                                  </TableCell>
-                                  <TableCell>
-                                    {!alert.cleared && (
-                                      <IconButton
-                                        color="primary"
-                                        onClick={() => clearAlert(alert.id)}
-                                      >
-                                        <CheckCircleOutline />
-                                      </IconButton>
-                                    )}
+                              {filteredAlerts.length === 0 ? (
+                                <TableRow>
+                                  <TableCell colSpan={6} align="center" sx={{ color: '#bbb' }}>
+                                    No alerts found
                                   </TableCell>
                                 </TableRow>
-                              ))}
+                              ) : (
+                                filteredAlerts.map((alert) => (
+                                  <TableRow
+                                    key={alert.id}
+                                    sx={{
+                                      bgcolor: alert.cleared ? 'rgba(0, 188, 212, 0.1)' : undefined,
+                                      '&:hover': {
+                                        background: 'rgba(0, 188, 212, 0.2)',
+                                        transition: 'background 0.3s',
+                                      },
+                                    }}
+                                  >
+                                    <TableCell sx={{ color: '#fff' }}>{alert.user}</TableCell>
+                                    <TableCell sx={{ color: '#fff' }}>{alert.action}</TableCell>
+                                    <TableCell sx={{ color: '#fff' }}>{alert.description}</TableCell>
+                                    <TableCell
+                                      sx={{
+                                        color:
+                                          alert.severity === 'high'
+                                            ? 'secondary.main'
+                                            : alert.severity === 'medium'
+                                            ? '#FFBB28'
+                                            : '#00C49F',
+                                        fontWeight: 'bold',
+                                      }}
+                                    >
+                                      {alert.severity.toUpperCase()}
+                                    </TableCell>
+                                    <TableCell sx={{ color: '#fff' }}>
+                                      {new Date(alert.timestamp).toLocaleString()}
+                                    </TableCell>
+                                    <TableCell>
+                                      {!alert.cleared && (
+                                        <IconButton
+                                          color="primary"
+                                          onClick={() => clearAlert(alert.id)}
+                                          sx={{
+                                            '&:hover': {
+                                              background: 'rgba(0, 188, 212, 0.3)',
+                                            },
+                                          }}
+                                          aria-label={`Clear alert ${alert.id}`}
+                                        >
+                                          <CheckCircleOutline />
+                                        </IconButton>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                              )}
                             </TableBody>
                           </Table>
                         </TableContainer>
@@ -421,10 +584,14 @@ export default function InsiderThreatDashboard() {
                 </Grid>
 
                 {/* Severity Pie Chart */}
-                <Grid item xs={12} md={6}>
-                  <Card elevation={3}>
+                <Grid item xs={12} sm={6}>
+                  <Card elevation={6}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom color="primary">
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        sx={{ color: 'primary.main', fontWeight: 'bold' }}
+                      >
                         Alerts by Severity
                       </Typography>
                       <ResponsiveContainer width="100%" height={250}>
@@ -437,6 +604,7 @@ export default function InsiderThreatDashboard() {
                             cy="50%"
                             outerRadius={80}
                             label
+                            animationDuration={800}
                           >
                             {severityData.map((entry, index) => (
                               <Cell
@@ -445,8 +613,8 @@ export default function InsiderThreatDashboard() {
                               />
                             ))}
                           </Pie>
-                          <Tooltip />
-                          <Legend />
+                          <Tooltip contentStyle={{ background: 'rgba(31, 44, 62, 0.9)', border: 'none', borderRadius: 8, color: '#fff' }} />
+                          <Legend wrapperStyle={{ color: '#bbb' }} />
                         </PieChart>
                       </ResponsiveContainer>
                     </CardContent>
@@ -454,20 +622,24 @@ export default function InsiderThreatDashboard() {
                 </Grid>
 
                 {/* Top Users Bar Chart */}
-                <Grid item xs={12} md={6}>
-                  <Card elevation={3}>
+                <Grid item xs={12} sm={6}>
+                  <Card elevation={6}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom color="primary">
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        sx={{ color: 'primary.main', fontWeight: 'bold' }}
+                      >
                         Top Users by Active Alerts
                       </Typography>
                       <ResponsiveContainer width="100%" height={250}>
                         <BarChart data={topUsersData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="user" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="count" fill="#1976d2" />
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.2)" />
+                          <XAxis dataKey="user" stroke="#bbb" />
+                          <YAxis stroke="#bbb" />
+                          <Tooltip contentStyle={{ background: 'rgba(31, 44, 62, 0.9)', border: 'none', borderRadius: 8, color: '#fff' }} />
+                          <Legend wrapperStyle={{ color: '#bbb' }} />
+                          <Bar dataKey="count" fill="primary.main" animationDuration={800} />
                         </BarChart>
                       </ResponsiveContainer>
                     </CardContent>
@@ -475,10 +647,14 @@ export default function InsiderThreatDashboard() {
                 </Grid>
 
                 {/* Action Pie Chart */}
-                <Grid item xs={12} md={6}>
-                  <Card elevation={3}>
+                <Grid item xs={12} sm={6}>
+                  <Card elevation={6}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom color="primary">
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        sx={{ color: 'primary.main', fontWeight: 'bold' }}
+                      >
                         Audit Logs by Action
                       </Typography>
                       <ResponsiveContainer width="100%" height={250}>
@@ -491,6 +667,7 @@ export default function InsiderThreatDashboard() {
                             cy="50%"
                             outerRadius={80}
                             label
+                            animationDuration={800}
                           >
                             {actionData.map((entry, index) => (
                               <Cell
@@ -499,8 +676,8 @@ export default function InsiderThreatDashboard() {
                               />
                             ))}
                           </Pie>
-                          <Tooltip />
-                          <Legend />
+                          <Tooltip contentStyle={{ background: 'rgba(31, 44, 62, 0.9)', border: 'none', borderRadius: 8, color: '#fff' }} />
+                          <Legend wrapperStyle={{ color: '#bbb' }} />
                         </PieChart>
                       </ResponsiveContainer>
                     </CardContent>
@@ -508,20 +685,24 @@ export default function InsiderThreatDashboard() {
                 </Grid>
 
                 {/* Top Log Users Bar Chart */}
-                <Grid item xs={12} md={6}>
-                  <Card elevation={3}>
+                <Grid item xs={12} sm={6}>
+                  <Card elevation={6}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom color="primary">
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        sx={{ color: 'primary.main', fontWeight: 'bold' }}
+                      >
                         Top Users by Log Activity
                       </Typography>
                       <ResponsiveContainer width="100%" height={250}>
                         <BarChart data={topLogUsersData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="user" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="count" fill="#1976d2" />
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.2)" />
+                          <XAxis dataKey="user" stroke="#bbb" />
+                          <YAxis stroke="#bbb" />
+                          <Tooltip contentStyle={{ background: 'rgba(31, 44, 62, 0.9)', border: 'none', borderRadius: 8, color: '#fff' }} />
+                          <Legend wrapperStyle={{ color: '#bbb' }} />
+                          <Bar dataKey="count" fill="primary.main" animationDuration={800} />
                         </BarChart>
                       </ResponsiveContainer>
                     </CardContent>
@@ -529,7 +710,7 @@ export default function InsiderThreatDashboard() {
                 </Grid>
               </Grid>
             )}
-          </Box>
+          </Container>
         </Box>
         <FooterSection />
       </Box>

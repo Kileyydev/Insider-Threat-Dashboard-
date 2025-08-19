@@ -7,17 +7,40 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import HomeIcon from '@mui/icons-material/Home';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
-import PeopleIcon from '@mui/icons-material/People';
 import ComputerIcon from '@mui/icons-material/Computer';
-import BuildIcon from '@mui/icons-material/Build';
-import FooterSection from '../components/FooterSection';
 
 const departments = [
-  { name: 'Finance', route: '/employee/finance', icon: AttachMoneyIcon },
-  { name: 'Human Resources', route: '/employee/hr', icon: PeopleIcon },
+  { name: 'Finance Department', route: '/employee/finance', icon: AttachMoneyIcon },
   { name: 'IT Department', route: '/employee/it', icon: ComputerIcon },
-  { name: 'Operations', route: '/employee/operations', icon: BuildIcon },
 ];
+
+// FooterSection component (replace with your actual FooterSection if different)
+function FooterSection() {
+  return (
+    <Box
+      component="footer"
+      sx={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        width: '100%',
+        background: 'rgba(15, 32, 39, 0.9)',
+        backdropFilter: 'blur(5px)',
+        color: '#fff',
+        py: 2,
+        textAlign: 'center',
+        zIndex: 3, // Ensure footer is above other elements
+        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+      }}
+    >
+      <Container>
+        <Typography variant="body2" sx={{ color: '#bbb' }}>
+          © {new Date().getFullYear()} Insider Threat Dashboard. All rights reserved.
+        </Typography>
+      </Container>
+    </Box>
+  );
+}
 
 export default function EmployeeLandingPage() {
   const router = useRouter();
@@ -29,6 +52,8 @@ export default function EmployeeLandingPage() {
         background: 'linear-gradient(45deg, #0f2027, #203a43, #2c5364)',
         position: 'relative',
         overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
         '&::before': {
           content: '""',
           position: 'absolute',
@@ -44,6 +69,8 @@ export default function EmployeeLandingPage() {
           },
           zIndex: 0,
         },
+        // Add padding to prevent content from being hidden under the footer
+        pb: 6, // Adjust based on footer height
       }}
     >
       {/* Header */}
@@ -62,7 +89,14 @@ export default function EmployeeLandingPage() {
       </AppBar>
 
       {/* Main Content */}
-      <Container sx={{ py: 4, position: 'relative', zIndex: 1 }}>
+      <Container
+        sx={{
+          py: 4,
+          position: 'relative',
+          zIndex: 1,
+          flex: 1, // Ensure content takes available space
+        }}
+      >
         <Typography
           variant="h3"
           sx={{
@@ -159,7 +193,9 @@ export default function EmployeeLandingPage() {
           </Button>
         </Box>
       </Box>
-<FooterSection/>
+
+      {/* Footer */}
+      <FooterSection />
     </Box>
   );
 }
