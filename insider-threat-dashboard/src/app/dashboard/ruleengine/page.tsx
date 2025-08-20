@@ -39,7 +39,7 @@ import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // ===== Types & constants =====
 type AccessLevel = 'none' | 'read' | 'write' | 'download';
-const DEPARTMENTS = ['Finance', 'IT', 'HR', 'Operations'];
+const DEPARTMENTS = ['Finance', 'IT'];
 const GROUPS = ['Interns', 'Regular Staff', 'Leads', 'Managers'];
 const ACCESS_LEVELS: AccessLevel[] = ['none', 'read', 'write', 'download'];
 
