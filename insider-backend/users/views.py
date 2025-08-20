@@ -15,7 +15,7 @@ from django.middleware.csrf import get_token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from .models import Resource, AccessControl
 from .serializers import UserSerializer, ResourceSerializer, AccessControlSerializer
-from .models import User, OTP, Resource, AuditLog, Department
+from .models import User, OTP, Resource, AuditLog, Department, Role
 from rest_framework.serializers import ModelSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db.models import Q
