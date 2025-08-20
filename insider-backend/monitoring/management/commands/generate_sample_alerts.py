@@ -13,8 +13,7 @@ class Command(BaseCommand):
         sample_users = [
             'insaiderdash@gmail.com',
             'imkiley2003@gmail.com',
-            'sean.mutuku@strathmore.edu',
-            'goretti.giciriri@strathmore.edu',
+            'christinekirimi46@gmail.com'
         ]
 
         alerts_created = 0
@@ -49,6 +48,7 @@ class Command(BaseCommand):
                     'description': 'User performed suspicious sequence of actions',
                     'severity': 'high',
                 },
+                
             ]
 
             for alert_data in example_alerts:
