@@ -15,7 +15,8 @@ class Resource(models.Model):
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='resources')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='created_resources')
     created_at = models.DateTimeField(auto_now_add=True)
-
+    permissions = models.JSONField(default=dict)
+    permission_string = models.TextField(default='')
     def __str__(self):
         return f"{self.name} ({'Folder' if self.is_folder else 'File'})"
 

@@ -43,6 +43,20 @@ def department_resources(request):
     return Response(serializer.data)
 
 
+from rest_framework import viewsets
+from .models import Resource
+from .serializers import ResourceSerializer
+
+class ResourceViewSet(viewsets.ModelViewSet):
+    queryset = Resource.objects.all()
+    serializer_class = ResourceSerializer
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    def perform_update(self, serializer):
+        serializer.save()
+        
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_users(request):

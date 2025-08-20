@@ -13,17 +13,30 @@ class ResourceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Resource
-        fields = ['id', 'name', 'path', 'is_folder', 'department', 'access_level']
+        fields = ['id', 'name', 'path', 'is_folder', 'department', 'access_level', 'permissions', 'permission_string']
+        
+        
 
     def get_access_level(self, obj):
         request = self.context.get('request', None)
         if request is None:
             # Defensive fallback if context['request'] is missing
             return 'none'
+        
 
         user = request.user
         access = obj.resourceaccess_set.filter(user=user).order_by('-access_level').first()
         return access.access_level if access else 'none'
+    
+    def validate_permissions(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Permissions must be a dictionary.")
+        return value
+
+def validate_permission_string(self, value):
+        if not isinstance(value, str):
+            raise serializers.ValidationError("permission_string must be a string.")
+        return value
 
 class UserSerializer(serializers.ModelSerializer):
     department = serializers.CharField(source='department.name', default=None, read_only=True)

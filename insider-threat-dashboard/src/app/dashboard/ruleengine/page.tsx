@@ -43,15 +43,33 @@ const DEPARTMENTS = ['Finance', 'IT', 'HR', 'Operations'];
 const GROUPS = ['Interns', 'Regular Staff', 'Leads', 'Managers'];
 const ACCESS_LEVELS: AccessLevel[] = ['none', 'read', 'write', 'download'];
 
+// Default permissions helper
 function emptyPermissions(): Record<string, AccessLevel> {
   return Object.fromEntries(GROUPS.map(g => [g, 'none'])) as Record<string, AccessLevel>;
 }
 
-function suggestPath(name: string, isFolder: boolean) {
-  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  return isFolder ? `/folders/${slug}/` : `/files/${slug}.dat`;
+// Convert permissions object to string
+function permsToString(perms: Record<string, AccessLevel>): string {
+  return Object.entries(perms)
+    .filter(([_, level]) => level !== 'none')
+    .map(([group, level]) => `${group}:${level}`)
+    .join(',');
 }
 
+// Convert string to permissions object
+function stringToPerms(str: string): Record<string, AccessLevel> {
+  const base = emptyPermissions();
+  if (!str) return base;
+  str.split(',').forEach(pair => {
+    const [group, level] = pair.split(':');
+    if (group && level && ACCESS_LEVELS.includes(level as AccessLevel)) {
+      base[group] = level as AccessLevel;
+    }
+  });
+  return base;
+}
+
+// Summarize permissions for display
 function summarizeAccess(perms: Record<string, AccessLevel>): string {
   const vals = Object.values(perms);
   if (vals.includes('download')) return 'download';
@@ -60,68 +78,34 @@ function summarizeAccess(perms: Record<string, AccessLevel>): string {
   return 'none';
 }
 
-// Normalizes permissions from backend into Record<string, AccessLevel>
-function normalizePerms(raw: any): Record<string, AccessLevel> {
-  const base = emptyPermissions();
-  if (!raw) return base;
-  let perms: any = raw;
-
-  // If raw is a string (e.g., JSON in access_level), parse it
-  if (typeof raw === 'string') {
-    try {
-      perms = JSON.parse(raw);
-    } catch {
-      console.error('Failed to parse permissions JSON:', raw);
-      return base;
-    }
-  }
-
-  // Handle object format (e.g., {"Interns": "read", "Managers": "write"})
-  if (typeof perms === 'object' && !Array.isArray(perms)) {
-    for (const k of Object.keys(perms)) {
-      const v = perms[k];
-      if (ACCESS_LEVELS.includes(v)) base[k] = v as AccessLevel;
-    }
-    return base;
-  }
-
-  // Handle array format (e.g., [{group: "Interns", permission: "read"}])
-  if (Array.isArray(perms)) {
-    for (const item of perms) {
-      if (!item) continue;
-      if (typeof item === 'string' && GROUPS.includes(item)) {
-        base[item] = 'read'; // Fallback for simple group names
-      } else if (item.group && item.permission && ACCESS_LEVELS.includes(item.permission)) {
-        base[item.group] = item.permission;
-      } else if (item.name && item.level && ACCESS_LEVELS.includes(item.level)) {
-        base[item.name] = item.level;
-      }
-    }
-    return base;
-  }
-
-  console.error('Unrecognized permissions format:', raw);
-  return base;
+// ===== Page component =====
+// Add this at the top
+export function suggestPath(name: string, isFolder: boolean): string {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  return isFolder ? `/folders/${slug}/` : `/files/${slug}.dat`;
 }
 
-// ===== Page component =====
 export default function AccessControlPage() {
   const { data, error, mutate } = useSWR<any[]>('/resources/', apiGet);
 
-  // Map API shape -> UI shape
+  // Map API -> UI shape
   const resources = useMemo(() => {
     if (!data) return [];
-    console.log('Raw API response:', data); // Debug: Inspect raw data
-    return data.map(r => ({
-      id: r.id,
-      name: r.name,
-      type: r.is_folder ? 'folder' : 'file',
-      access: summarizeAccess(normalizePerms(r.permissions ?? r.access_level ?? {})),
-      department: r.department,
-      path: r.path || '',
-      permissions: normalizePerms(r.permissions ?? r.access_level ?? {}),
-      raw: r,
-    }));
+    console.log('Raw API response:', data); // Debug log
+    return data.map(r => {
+      const perms = stringToPerms(r.permission_string ?? '');
+      console.log('Parsed permissions for resource', r.id, ':', perms); // Debug log
+      return {
+        id: r.id,
+        name: r.name,
+        type: r.is_folder ? 'folder' : 'file',
+        access: summarizeAccess(perms),
+        department: r.department || (r.department_id ? DEPARTMENTS[r.department_id - 1] : ''),
+        path: r.path || '',
+        permissions: perms,
+        raw: r,
+      };
+    });
   }, [data]);
 
   const resourcesByDepartment = useMemo(() => {
@@ -149,7 +133,7 @@ export default function AccessControlPage() {
     severity: 'success',
   });
 
-  // Open create
+  // Open create dialog
   const openCreate = () => {
     setMode('create');
     setEditingId(null);
@@ -162,20 +146,23 @@ export default function AccessControlPage() {
     setOpen(true);
   };
 
-  // Open edit
+  // Open edit dialog
   const openEdit = async (file: any) => {
     setMode('edit');
     setEditingId(file.id);
     setFetchingResource(true);
     setToast({ open: false, msg: '', severity: 'success' });
+
     try {
       const detail = await apiGet(`/resources/${file.id}/`);
-      console.log('Resource detail response:', detail); // Debug: Inspect detail response
+      console.log('Resource detail response:', detail); // Debug log
       setFormName(detail.name ?? file.name ?? '');
       setFormType(detail.is_folder ? 'folder' : 'file');
-      setFormDept(detail.department ?? file.department ?? '');
+      setFormDept(detail.department ?? (detail.department_id ? DEPARTMENTS[detail.department_id - 1] : ''));
       setFormPath(detail.path ?? file.path ?? suggestPath(detail.name ?? file.name ?? '', detail.is_folder ?? file.type === 'folder'));
-      setFormPerms(normalizePerms(detail.permissions ?? detail.access_level ?? file.permissions));
+      const perms = stringToPerms(detail.permission_string ?? '');
+      console.log('Parsed permissions from API:', perms); // Debug log
+      setFormPerms(perms);
     } catch (e: any) {
       console.error('Failed to fetch resource detail:', e);
       setToast({ open: true, msg: parseApiError(e), severity: 'error' });
@@ -184,14 +171,14 @@ export default function AccessControlPage() {
       setFormType(file.type ?? 'file');
       setFormDept(file.department ?? '');
       setFormPath(file.path ?? suggestPath(file.name ?? '', file.type === 'folder'));
-      setFormPerms(normalizePerms(file.permissions));
+      setFormPerms(stringToPerms(file.permission_string) || emptyPermissions());
     } finally {
       setFetchingResource(false);
       setOpen(true);
     }
   };
 
-  // Utility to parse backend error messages
+  // Parse backend error messages
   function parseApiError(e: any) {
     let msg = e?.message ?? String(e) ?? 'Unknown error';
     try {
@@ -201,18 +188,20 @@ export default function AccessControlPage() {
           .map(([k, v]) => (Array.isArray(v) ? `${k}: ${v.join(', ')}` : `${k}: ${String(v)}`))
           .join(' | ');
       }
-    } catch {
-      // Not JSON
-    }
+    } catch {}
     return msg;
   }
 
   // Update one group's permission
   const updateGroupPerm = (group: string, level: AccessLevel) => {
-    setFormPerms(prev => ({ ...prev, [group]: level }));
+    setFormPerms(prev => {
+      const newPerms = { ...prev, [group]: level };
+      console.log('Updated permissions in dialog:', newPerms); // Debug log
+      return newPerms;
+    });
   };
 
-  // Save (create or patch)
+  // Save create/edit
   const handleSave = async () => {
     if (!formName.trim()) {
       setToast({ open: true, msg: 'Name is required.', severity: 'error' });
@@ -231,19 +220,21 @@ export default function AccessControlPage() {
     const payload = {
       name: formName.trim(),
       is_folder: formType === 'folder',
-      department: formDept,
       path: finalPath,
-      access_level: summarizeAccess(formPerms),
-      permissions: formPerms,
+      department_id: DEPARTMENTS.indexOf(formDept) + 1,
+      permission_string: permsToString(formPerms),
     };
+    console.log('Final payload before save:', payload); // Debug log
 
     try {
       setSaving(true);
       if (mode === 'create') {
-        await apiPost('/resources/', payload);
+        const response = await apiPost('/resources/', payload);
+        console.log('Create response:', response); // Debug log
         setToast({ open: true, msg: 'Resource created successfully', severity: 'success' });
       } else if (mode === 'edit' && editingId != null) {
-        await apiPatch(`/resources/${editingId}/`, payload);
+        const response = await apiPatch(`/resources/${editingId}/`, payload);
+        console.log('Update response:', response); // Debug log
         setToast({ open: true, msg: 'Resource updated successfully', severity: 'success' });
       }
       setOpen(false);
@@ -256,7 +247,7 @@ export default function AccessControlPage() {
     }
   };
 
-  // Delete
+  // Delete resource
   const handleDelete = async (file: any) => {
     if (!confirm(`Delete "${file.name}"? This cannot be undone.`)) return;
     try {
@@ -358,12 +349,12 @@ export default function AccessControlPage() {
         <DialogTitle>{mode === 'create' ? 'Add New Resource' : 'Edit Resource'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={1}>
-            {fetchingResource ? (
+            {fetchingResource && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <CircularProgress size={20} />
                 <Typography>Loading resource details...</Typography>
               </Box>
-            ) : null}
+            )}
 
             <TextField
               label="Resource Name"
