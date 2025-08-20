@@ -1,6 +1,8 @@
+
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import useSWR from 'swr';
 import {
   Box,
   Button,
@@ -11,7 +13,6 @@ import {
   DialogTitle,
   IconButton,
   Paper,
-  Stack,
   Table,
   TableBody,
   TableCell,
@@ -20,455 +21,253 @@ import {
   TableRow,
   TextField,
   Typography,
-  Checkbox,
-  FormControlLabel,
-  Avatar,
-  Chip,
-  ListItem,
-  Select,
   MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  Chip,
+  Stack,
+  Tooltip,
+  Snackbar,
+  Alert,
 } from '@mui/material';
-import { Edit, Delete, Person, KeyboardArrowLeft, Close, Add } from '@mui/icons-material';
-import { SelectChangeEvent } from '@mui/material/Select';
+import { Edit, Delete, Add } from '@mui/icons-material';
 import TopNavBar from '@/app/components/TopNavBar';
 import Sidebar from '../components/SideBar';
 import FooterSection from '@/app/components/FooterSection';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
-interface User {
-  id: number;
-  email: string;
-  full_name: string;
-  department?: string | null;
-  group?: string | null;
-  is_simulated_threat: boolean;
+// ===== Types & constants =====
+type AccessLevel = 'none' | 'read' | 'write' | 'download';
+const DEPARTMENTS = ['Finance', 'IT', 'HR', 'Operations'];
+const GROUPS = ['Interns', 'Regular Staff', 'Leads', 'Managers'];
+const ACCESS_LEVELS: AccessLevel[] = ['none', 'read', 'write', 'download'];
+
+function emptyPermissions(): Record<string, AccessLevel> {
+  return Object.fromEntries(GROUPS.map(g => [g, 'none'])) as Record<string, AccessLevel>;
 }
 
-interface Resource {
-  id: number;
-  name: string;
-  path: string | null;
-  is_folder: boolean;
-  department: string;
-  access_level: string;
+function suggestPath(name: string, isFolder: boolean) {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  return isFolder ? `/folders/${slug}/` : `/files/${slug}.dat`;
 }
 
-interface Group {
-  id: number;
-  name: string;
+function summarizeAccess(perms: Record<string, AccessLevel>): string {
+  const vals = Object.values(perms);
+  if (vals.includes('download')) return 'download';
+  if (vals.includes('write')) return 'write';
+  if (vals.includes('read')) return 'read';
+  return 'none';
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000';
+// Normalizes permissions from backend into Record<string, AccessLevel>
+function normalizePerms(raw: any): Record<string, AccessLevel> {
+  const base = emptyPermissions();
+  if (!raw) return base;
+  let perms: any = raw;
 
-function getCookie(name: string) {
-  let cookieValue = null;
-  if (document.cookie && document.cookie !== '') {
-    const cookies = document.cookie.split(';');
-    for (let cookie of cookies) {
-      cookie = cookie.trim();
-      if (cookie.startsWith(name + '=')) {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-        break;
-      }
+  // If raw is a string (e.g., JSON in access_level), parse it
+  if (typeof raw === 'string') {
+    try {
+      perms = JSON.parse(raw);
+    } catch {
+      console.error('Failed to parse permissions JSON:', raw);
+      return base;
     }
   }
-  return cookieValue;
+
+  // Handle object format (e.g., {"Interns": "read", "Managers": "write"})
+  if (typeof perms === 'object' && !Array.isArray(perms)) {
+    for (const k of Object.keys(perms)) {
+      const v = perms[k];
+      if (ACCESS_LEVELS.includes(v)) base[k] = v as AccessLevel;
+    }
+    return base;
+  }
+
+  // Handle array format (e.g., [{group: "Interns", permission: "read"}])
+  if (Array.isArray(perms)) {
+    for (const item of perms) {
+      if (!item) continue;
+      if (typeof item === 'string' && GROUPS.includes(item)) {
+        base[item] = 'read'; // Fallback for simple group names
+      } else if (item.group && item.permission && ACCESS_LEVELS.includes(item.permission)) {
+        base[item.group] = item.permission;
+      } else if (item.name && item.level && ACCESS_LEVELS.includes(item.level)) {
+        base[item.name] = item.level;
+      }
+    }
+    return base;
+  }
+
+  console.error('Unrecognized permissions format:', raw);
+  return base;
 }
 
-async function makeRequest(url: string, options: RequestInit = {}) {
-  await fetch(`${API_BASE}/api/csrf/`, {
-    credentials: 'include',
-  });
-
-  const headers = new Headers(options.headers || {});
-  if (!headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-  const csrfToken = getCookie('csrftoken');
-  if (csrfToken) {
-    headers.set('X-CSRFToken', csrfToken);
-  }
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  return fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
-}
-
+// ===== Page component =====
 export default function AccessControlPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [usersError, setUsersError] = useState<string>('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [userModalOpen, setUserModalOpen] = useState(false);
-  const [userModalMode, setUserModalMode] = useState<'add' | 'edit'>('add');
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [userFormData, setUserFormData] = useState({
-    email: '',
-    full_name: '',
-    department: '',
-    group: '',
-    password: '',
-    is_simulated_threat: false,
-  });
+  const { data, error, mutate } = useSWR<any[]>('/resources/', apiGet);
+
+  // Map API shape -> UI shape
+  const resources = useMemo(() => {
+    if (!data) return [];
+    console.log('Raw API response:', data); // Debug: Inspect raw data
+    return data.map(r => ({
+      id: r.id,
+      name: r.name,
+      type: r.is_folder ? 'folder' : 'file',
+      access: summarizeAccess(normalizePerms(r.permissions ?? r.access_level ?? {})),
+      department: r.department,
+      path: r.path || '',
+      permissions: normalizePerms(r.permissions ?? r.access_level ?? {}),
+      raw: r,
+    }));
+  }, [data]);
+
+  const resourcesByDepartment = useMemo(() => {
+    return resources.reduce<Record<string, typeof resources[0][]>>((acc, file) => {
+      if (!acc[file.department]) acc[file.department] = [];
+      acc[file.department].push(file);
+      return acc;
+    }, {});
+  }, [resources]);
+
+  // Dialog state
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<'create' | 'edit'>('create');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formType, setFormType] = useState<'file' | 'folder'>('file');
+  const [formDept, setFormDept] = useState('');
+  const [formPath, setFormPath] = useState('');
+  const [formPerms, setFormPerms] = useState<Record<string, AccessLevel>>(emptyPermissions());
   const [saving, setSaving] = useState(false);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [resources, setResources] = useState<Resource[]>([]);
-  const [filesLoading, setFilesLoading] = useState(false);
-  const [filesError, setFilesError] = useState('');
-  const [fileModalOpen, setFileModalOpen] = useState(false);
-  const [fileModalMode, setFileModalMode] = useState<'add' | 'edit'>('add');
-  const [editingResource, setEditingResource] = useState<Resource | null>(null);
-  const [fileFormData, setFileFormData] = useState({
-    name: '',
-    department: '',
-    access_level: '',
-    is_folder: false,
+  const [fetchingResource, setFetchingResource] = useState(false);
+  const [toast, setToast] = useState<{ open: boolean; msg: string; severity: 'success' | 'error' }>({
+    open: false,
+    msg: '',
+    severity: 'success',
   });
-  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
-  const [updateSetting, setUpdateSetting] = useState<string>('');
-  const [updateValue, setUpdateValue] = useState<string | boolean>('');
-  const token = useMemo(() => localStorage.getItem('accessToken'), []);
 
-  useEffect(() => {
-    if (!token) return;
-    async function fetchGroups() {
-      try {
-        const res = await makeRequest(`${API_BASE}/api/groups/`);
-        if (!res.ok) throw new Error(`Failed to fetch groups: ${res.status}`);
-        const data = await res.json();
-        setGroups(data);
-      } catch (e) {}
-    }
-    fetchGroups();
-  }, [token]);
+  // Open create
+  const openCreate = () => {
+    setMode('create');
+    setEditingId(null);
+    setFormName('');
+    setFormType('file');
+    setFormDept('');
+    setFormPath('');
+    setFormPerms(emptyPermissions());
+    setToast({ open: false, msg: '', severity: 'success' });
+    setOpen(true);
+  };
 
-  const fetchUsers = async () => {
-    if (!token) {
-      setUsersError('You are not logged in.');
-      return;
-    }
-    setUsersLoading(true);
-    setUsersError('');
+  // Open edit
+  const openEdit = async (file: any) => {
+    setMode('edit');
+    setEditingId(file.id);
+    setFetchingResource(true);
+    setToast({ open: false, msg: '', severity: 'success' });
     try {
-      const res = await makeRequest(`${API_BASE}/api/users/`);
-      if (!res.ok) throw new Error(`Error: ${res.status}`);
-      const data = await res.json();
-      setUsers(data);
+      const detail = await apiGet(`/resources/${file.id}/`);
+      console.log('Resource detail response:', detail); // Debug: Inspect detail response
+      setFormName(detail.name ?? file.name ?? '');
+      setFormType(detail.is_folder ? 'folder' : 'file');
+      setFormDept(detail.department ?? file.department ?? '');
+      setFormPath(detail.path ?? file.path ?? suggestPath(detail.name ?? file.name ?? '', detail.is_folder ?? file.type === 'folder'));
+      setFormPerms(normalizePerms(detail.permissions ?? detail.access_level ?? file.permissions));
     } catch (e: any) {
-      setUsersError(e.message || 'Failed to fetch users.');
+      console.error('Failed to fetch resource detail:', e);
+      setToast({ open: true, msg: parseApiError(e), severity: 'error' });
+      // Fallback
+      setFormName(file.name ?? '');
+      setFormType(file.type ?? 'file');
+      setFormDept(file.department ?? '');
+      setFormPath(file.path ?? suggestPath(file.name ?? '', file.type === 'folder'));
+      setFormPerms(normalizePerms(file.permissions));
     } finally {
-      setUsersLoading(false);
+      setFetchingResource(false);
+      setOpen(true);
     }
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, [token]);
-
-  const fetchFiles = async () => {
-    if (!token) {
-      setFilesError('You are not logged in.');
-      return;
-    }
-    setFilesLoading(true);
-    setFilesError('');
+  // Utility to parse backend error messages
+  function parseApiError(e: any) {
+    let msg = e?.message ?? String(e) ?? 'Unknown error';
     try {
-      const res = await makeRequest(`${API_BASE}/api/department_resources/`);
-      if (!res.ok) throw new Error(`Error: ${res.status}`);
-      const data = await res.json();
-      setResources(data);
-    } catch (e: any) {
-      setFilesError(e.message || 'Failed to fetch resources.');
-    } finally {
-      setFilesLoading(false);
+      const parsed = JSON.parse(msg);
+      if (typeof parsed === 'object') {
+        return Object.entries(parsed)
+          .map(([k, v]) => (Array.isArray(v) ? `${k}: ${v.join(', ')}` : `${k}: ${String(v)}`))
+          .join(' | ');
+      }
+    } catch {
+      // Not JSON
     }
+    return msg;
+  }
+
+  // Update one group's permission
+  const updateGroupPerm = (group: string, level: AccessLevel) => {
+    setFormPerms(prev => ({ ...prev, [group]: level }));
   };
 
-  useEffect(() => {
-    fetchFiles();
-  }, [token]);
-
-  const filteredUsers = users.filter(
-    u => u.email.toLowerCase().includes(searchTerm.toLowerCase()) || (u.full_name && u.full_name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  const addToSelected = (user: User) => {
-    if (!selectedUsers.find(u => u.id === user.id)) {
-      setSelectedUsers([...selectedUsers, user]);
-    }
-  };
-
-  const removeSelected = (user: User) => {
-    setSelectedUsers(selectedUsers.filter(u => u.id !== user.id));
-  };
-
-  const openUserAddModal = () => {
-    setUserModalMode('add');
-    setEditingUser(null);
-    setUserFormData({ email: '', full_name: '', department: '', group: '', password: '', is_simulated_threat: false });
-    setUserModalOpen(true);
-  };
-
-  const openUserEditModal = (user: User) => {
-    setUserModalMode('edit');
-    setEditingUser(user);
-    setUserFormData({
-      email: user.email,
-      full_name: user.full_name || '',
-      department: user.department || '',
-      group: user.group || '',
-      password: '',
-      is_simulated_threat: user.is_simulated_threat,
-    });
-    setUserModalOpen(true);
-  };
-
-  const closeUserModal = () => {
-    setUserModalOpen(false);
-    setUsersError('');
-  };
-
-  const handleUserInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | SelectChangeEvent<string>) => {
-    const { name, value } = e.target as any;
-    setUserFormData({ ...userFormData, [name]: value });
-    setUsersError('');
-  };
-
-  const handleUserCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, checked } = e.target;
-    setUserFormData({ ...userFormData, [name]: checked });
-  };
-
-  const handleSaveUser = async () => {
-    if (!userFormData.email || !userFormData.full_name || !userFormData.department || !userFormData.group) {
-      setUsersError('Email, full name, department, and group are required.');
+  // Save (create or patch)
+  const handleSave = async () => {
+    if (!formName.trim()) {
+      setToast({ open: true, msg: 'Name is required.', severity: 'error' });
       return;
     }
-    if (userModalMode === 'add' && !userFormData.password) {
-      setUsersError('Password is required for new users.');
+    if (!formDept) {
+      setToast({ open: true, msg: 'Department is required.', severity: 'error' });
+      return;
+    }
+    const finalPath = formPath.trim() || suggestPath(formName, formType === 'folder');
+    if (!finalPath) {
+      setToast({ open: true, msg: 'Path is required.', severity: 'error' });
       return;
     }
 
-    setSaving(true);
-    setUsersError('');
+    const payload = {
+      name: formName.trim(),
+      is_folder: formType === 'folder',
+      department: formDept,
+      path: finalPath,
+      access_level: summarizeAccess(formPerms),
+      permissions: formPerms,
+    };
+
     try {
-      let res;
-      const payload: any = {
-        email: userFormData.email,
-        full_name: userFormData.full_name,
-        department: userFormData.department || null,
-        group: userFormData.group || null,
-        is_simulated_threat: userFormData.is_simulated_threat,
-      };
-      if (userModalMode === 'add') {
-        payload.password = userFormData.password;
-        res = await makeRequest(`${API_BASE}/api/users/`, {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
-      } else if (userModalMode === 'edit' && editingUser) {
-        if (userFormData.password) {
-          payload.password = userFormData.password;
-        }
-        res = await makeRequest(`${API_BASE}/api/users/${editingUser.id}/`, {
-          method: 'PUT',
-          body: JSON.stringify(payload),
-        });
+      setSaving(true);
+      if (mode === 'create') {
+        await apiPost('/resources/', payload);
+        setToast({ open: true, msg: 'Resource created successfully', severity: 'success' });
+      } else if (mode === 'edit' && editingId != null) {
+        await apiPatch(`/resources/${editingId}/`, payload);
+        setToast({ open: true, msg: 'Resource updated successfully', severity: 'success' });
       }
-      if (!res || !res.ok) {
-        const errData = await res?.json();
-        throw new Error(errData?.detail || 'Failed to save user');
-      }
-      await fetchUsers();
-      closeUserModal();
+      setOpen(false);
+      await mutate();
     } catch (e: any) {
-      setUsersError(e.message || 'Failed to save user');
+      console.error('Save failed:', e);
+      setToast({ open: true, msg: parseApiError(e), severity: 'error' });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteUser = async (user: User) => {
-    if (!confirm(`Are you sure you want to delete ${user.email}? This action cannot be undone.`)) return;
-    if (!token) return setUsersError('You are not logged in.');
-
-    setUsersLoading(true);
-    setUsersError('');
+  // Delete
+  const handleDelete = async (file: any) => {
+    if (!confirm(`Delete "${file.name}"? This cannot be undone.`)) return;
     try {
-      const res = await makeRequest(`${API_BASE}/api/users/${user.id}/`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData?.detail || 'Failed to delete user');
-      }
-      await fetchUsers();
+      await apiDelete(`/resources/${file.id}/`);
+      setToast({ open: true, msg: 'Resource deleted successfully', severity: 'success' });
+      await mutate();
     } catch (e: any) {
-      setUsersError(e.message || 'Failed to delete user');
-    } finally {
-      setUsersLoading(false);
+      console.error('Delete failed:', e);
+      setToast({ open: true, msg: parseApiError(e), severity: 'error' });
     }
   };
-
-  const handleApplySettings = async () => {
-    if (!updateSetting || selectedUsers.length === 0) return;
-    setSaving(true);
-    setUsersError('');
-    try {
-      for (const user of selectedUsers) {
-        const payload: any = {
-          [updateSetting]: updateSetting === 'is_simulated_threat' ? !!updateValue : updateValue,
-        };
-        const res = await makeRequest(`${API_BASE}/api/users/${user.id}/`, {
-          method: 'PUT',
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData?.detail || 'Failed to update user');
-        }
-      }
-      await fetchUsers();
-      setSelectedUsers([]);
-      setUpdateSetting('');
-      setUpdateValue('');
-    } catch (e: any) {
-      setUsersError(e.message || 'Failed to apply settings');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openAddFileModal = (department: string) => {
-    setFileModalMode('add');
-    setEditingResource(null);
-    setFileFormData({ name: '', department: department, access_level: '', is_folder: false });
-    setFileModalOpen(true);
-  };
-
-  const openEditFileModal = (resource: Resource) => {
-    setFileModalMode('edit');
-    setEditingResource(resource);
-    setFileFormData({
-      name: resource.name,
-      department: resource.department,
-      access_level: resource.access_level,
-      is_folder: resource.is_folder,
-    });
-    setFileModalOpen(true);
-  };
-
-  const closeFileModal = () => {
-    setFileModalOpen(false);
-    setFilesError('');
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | SelectChangeEvent<string>) => {
-    const { name, value } = e.target as any;
-    setFileFormData({ ...fileFormData, [name]: value });
-    setFilesError('');
-  };
-
-  const handleFileCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, checked } = e.target;
-    setFileFormData({ ...fileFormData, [name]: checked });
-  };
-
-  const handleAddFile = async () => {
-    if (!fileFormData.name || !fileFormData.department || !fileFormData.access_level) {
-      setFilesError('Name, department, and access level are required.');
-      return;
-    }
-    setSaving(true);
-    setFilesError('');
-    try {
-      const payload = {
-        name: fileFormData.name,
-        path: null,
-        is_folder: fileFormData.is_folder,
-        department: fileFormData.department,
-        access_level: fileFormData.access_level,
-      };
-      const res = await makeRequest(`${API_BASE}/api/department_resources/`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData?.detail || 'Failed to add resource');
-      }
-      await fetchFiles();
-      closeFileModal();
-    } catch (e: any) {
-      setFilesError(e.message || 'Failed to add resource');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleUpdateFile = async () => {
-    if (!fileFormData.name || !fileFormData.access_level) {
-      setFilesError('Name and access level are required.');
-      return;
-    }
-    if (!editingResource) return;
-    setSaving(true);
-    setFilesError('');
-    try {
-      const payload = {
-        name: fileFormData.name,
-        path: null,
-        is_folder: fileFormData.is_folder,
-        department: fileFormData.department,
-        access_level: fileFormData.access_level,
-      };
-      const res = await makeRequest(`${API_BASE}/api/department_resources/${editingResource.id}/`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData?.detail || 'Failed to update resource');
-      }
-      await fetchFiles();
-      closeFileModal();
-    } catch (e: any) {
-      setFilesError(e.message || 'Failed to update resource');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteFile = async (resource: Resource) => {
-    if (!confirm(`Are you sure you want to delete ${resource.name}? This action cannot be undone.`)) return;
-    setFilesLoading(true);
-    setFilesError('');
-    try {
-      const res = await makeRequest(`${API_BASE}/api/department_resources/${resource.id}/`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData?.detail || 'Failed to delete resource');
-      }
-      await fetchFiles();
-    } catch (e: any) {
-      setFilesError(e.message || 'Failed to delete resource');
-    } finally {
-      setFilesLoading(false);
-    }
-  };
-
-  const resourcesByDepartment = resources.reduce<Record<string, Resource[]>>((acc, resource) => {
-    if (!acc[resource.department]) acc[resource.department] = [];
-    acc[resource.department].push(resource);
-    return acc;
-  }, {});
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -476,92 +275,69 @@ export default function AccessControlPage() {
       <Box sx={{ display: 'flex', flex: 1 }}>
         <Sidebar />
         <Box sx={{ flex: 1, p: 3, ml: '240px' }}>
-          <Typography variant="h4" mb={2}>
-            Access Control
-          </Typography>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+            <Typography variant="h4">Access Control</Typography>
+            <Button variant="contained" startIcon={<Add />} onClick={openCreate}>
+              Add Resource
+            </Button>
+          </Stack>
 
-          {/* Users Section */}
-          <Typography variant="h5" mb={2}>
-            Users
-          </Typography>
-          {usersLoading ? (
-            <CircularProgress />
-          ) : usersError ? (
-            <Typography color="error">{usersError}</Typography>
-          ) : (
-            <TableContainer component={Paper} sx={{ mb: 4 }}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Full Name</TableCell>
-                    <TableCell>Department</TableCell>
-                    <TableCell>Group</TableCell>
-                    <TableCell>Simulated Threat</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredUsers.map(user => (
-                    <TableRow key={user.id}>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>{user.full_name}</TableCell>
-                      <TableCell>{user.department || '-'}</TableCell>
-                      <TableCell>{user.group || '-'}</TableCell>
-                      <TableCell>{user.is_simulated_threat ? 'Yes' : 'No'}</TableCell>
-                      <TableCell align="right">
-                        <IconButton onClick={() => openUserEditModal(user)}>
-                          <Edit />
-                        </IconButton>
-                        <IconButton onClick={() => handleDeleteUser(user)}>
-                          <Delete />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-          <Button variant="contained" onClick={openUserAddModal} sx={{ mb: 4 }}>
-            Add User
-          </Button>
+          <Typography variant="h5" mb={2}>Files</Typography>
 
-          {/* Files Section */}
-          <Typography variant="h5" mb={2}>
-            Files
-          </Typography>
-          {filesLoading ? (
+          {!data && !error ? (
             <CircularProgress />
-          ) : filesError ? (
-            <Typography color="error">{filesError}</Typography>
+          ) : error ? (
+            <Typography color="error">
+              {error === '404' ? 'Resources not found. Check backend configuration.' : `Failed to load resources: ${error}`}
+            </Typography>
+          ) : Object.keys(resourcesByDepartment).length === 0 ? (
+            <Typography>No files available.</Typography>
           ) : (
             Object.entries(resourcesByDepartment).map(([department, files]) => (
               <Box key={department} mb={4}>
-                <Typography variant="h6" mb={1}>
-                  Department: {department}
-                </Typography>
+                <Typography variant="h6" mb={1}>Department: {department}</Typography>
                 <TableContainer component={Paper}>
                   <Table>
                     <TableHead>
                       <TableRow>
                         <TableCell>Name</TableCell>
                         <TableCell>Type</TableCell>
-                        <TableCell>Access Level</TableCell>
+                        <TableCell>Path</TableCell>
+                        <TableCell>Access</TableCell>
+                        <TableCell>Permissions</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {files.map(file => (
+                      {files.map((file: any) => (
                         <TableRow key={file.id}>
                           <TableCell>{file.name}</TableCell>
-                          <TableCell>{file.is_folder ? 'Folder' : 'File'}</TableCell>
-                          <TableCell>{file.access_level}</TableCell>
+                          <TableCell>{file.type}</TableCell>
+                          <TableCell>
+                            <Tooltip title={file.path}>
+                              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: 260 }}>
+                                {file.path}
+                              </span>
+                            </Tooltip>
+                          </TableCell>
+                          <TableCell>{file.access}</TableCell>
+                          <TableCell>
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                              {GROUPS.map(g => (
+                                <Chip
+                                  key={g}
+                                  size="small"
+                                  label={`${g}: ${file.permissions[g] || 'none'}`}
+                                  sx={{ mb: 0.5 }}
+                                />
+                              ))}
+                            </Stack>
+                          </TableCell>
                           <TableCell align="right">
-                            <IconButton onClick={() => openEditFileModal(file)}>
+                            <IconButton onClick={() => openEdit(file)}>
                               <Edit />
                             </IconButton>
-                            <IconButton onClick={() => handleDeleteFile(file)}>
+                            <IconButton onClick={() => handleDelete(file)}>
                               <Delete />
                             </IconButton>
                           </TableCell>
@@ -570,37 +346,141 @@ export default function AccessControlPage() {
                     </TableBody>
                   </Table>
                 </TableContainer>
-                <Button variant="contained" onClick={() => openAddFileModal(department)} sx={{ mt: 2 }}>
-                  Add Resource
-                </Button>
               </Box>
             ))
           )}
-
-          {/* User Modal */}
-          <Dialog open={userModalOpen} onClose={closeUserModal} maxWidth="sm" fullWidth>
-            <DialogTitle>{userModalMode === 'add' ? 'Add New User' : `Edit User: ${editingUser?.email}`}</DialogTitle>
-            <DialogContent>
-              {/* ... (same as provided) */}
-            </DialogContent>
-            <DialogActions>
-              {/* ... (same as provided) */}
-            </DialogActions>
-          </Dialog>
-
-          {/* File Modal */}
-          <Dialog open={fileModalOpen} onClose={closeFileModal} maxWidth="sm" fullWidth>
-            <DialogTitle>{fileModalMode === 'add' ? 'Add New Resource' : `Edit Resource: ${editingResource?.name}`}</DialogTitle>
-            <DialogContent>
-              {/* ... (same as provided) */}
-            </DialogContent>
-            <DialogActions>
-              {/* ... (same as provided) */}
-            </DialogActions>
-          </Dialog>
         </Box>
       </Box>
       <FooterSection />
+
+      {/* Dialog */}
+      <Dialog open={open} onClose={() => { if (!saving) setOpen(false); }} fullWidth maxWidth="md">
+        <DialogTitle>{mode === 'create' ? 'Add New Resource' : 'Edit Resource'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={1}>
+            {fetchingResource ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <CircularProgress size={20} />
+                <Typography>Loading resource details...</Typography>
+              </Box>
+            ) : null}
+
+            <TextField
+              label="Resource Name"
+              value={formName}
+              onChange={e => {
+                setFormName(e.target.value);
+                if (!formPath.trim()) setFormPath(suggestPath(e.target.value, formType === 'folder'));
+              }}
+              fullWidth
+            />
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl fullWidth>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={formType}
+                  label="Type"
+                  onChange={e => {
+                    const v = e.target.value as 'file' | 'folder';
+                    setFormType(v);
+                    if (!formPath.trim()) setFormPath(suggestPath(formName, v === 'folder'));
+                  }}
+                >
+                  <MenuItem value="file">File</MenuItem>
+                  <MenuItem value="folder">Folder</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth>
+                <InputLabel>Department</InputLabel>
+                <Select
+                  value={formDept}
+                  label="Department"
+                  onChange={e => setFormDept(e.target.value)}
+                  disabled={mode === 'edit'}
+                >
+                  {DEPARTMENTS.map(d => (
+                    <MenuItem key={d} value={d}>{d}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+
+            <TextField
+              label="Path (required)"
+              value={formPath}
+              onChange={e => setFormPath(e.target.value)}
+              helperText="Example: /files/report-q3.pdf or /folders/policies/"
+              fullWidth
+            />
+
+            <Box>
+              <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>Group Permissions</Typography>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Group</TableCell>
+                    <TableCell>Permission</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {GROUPS.map(g => (
+                    <TableRow key={g}>
+                      <TableCell>{g}</TableCell>
+                      <TableCell>
+                        <FormControl size="small" fullWidth>
+                          <Select
+                            value={formPerms[g] || 'none'}
+                            onChange={e => updateGroupPerm(g, e.target.value as AccessLevel)}
+                          >
+                            {ACCESS_LEVELS.map(a => (
+                              <MenuItem key={a} value={a}>{a}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+
+            {toast.open && (
+              <Alert severity={toast.severity} onClose={() => setToast({ ...toast, open: false })}>
+                {toast.msg}
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setOpen(false)} disabled={saving || fetchingResource}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            variant="contained"
+            disabled={saving || fetchingResource}
+          >
+            {saving ? <CircularProgress size={20} /> : mode === 'create' ? 'Create' : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={toast.open && !open}
+        autoHideDuration={3000}
+        onClose={() => setToast({ ...toast, open: false })}
+      >
+        <Alert
+          onClose={() => setToast({ ...toast, open: false })}
+          severity={toast.severity}
+          sx={{ width: '100%' }}
+        >
+          {toast.msg}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

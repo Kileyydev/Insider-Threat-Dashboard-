@@ -874,9 +874,7 @@ export default function AdminTabsPage() {
                   border: '1px solid rgba(0, 188, 212, 0.2)',
                 }}
               >
-                <Typography variant="h6" sx={{ color: '#00bcd4', fontWeight: 'bold', mb: 2 }}>
-                  Files and Folders
-                </Typography>
+               
                 {filesLoading ? (
                   <Box sx={{ textAlign: 'center', mt: 5 }}>
                     <CircularProgress sx={{ color: '#00bcd4' }} />
